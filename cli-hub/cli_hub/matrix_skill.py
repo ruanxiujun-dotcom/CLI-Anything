@@ -125,6 +125,11 @@ def _render_injected_section(matrix_item, installed):
             f"{canonical_skill} | {local_skill} | {status} |"
         )
 
+    capability_tooling = _render_capability_tooling(matrix_item, installed)
+    if capability_tooling:
+        lines.append("")
+        lines.append(capability_tooling)
+
     stage_tooling = _render_stage_tooling(matrix_item, installed)
     if stage_tooling:
         lines.append("")
@@ -136,6 +141,91 @@ def _render_injected_section(matrix_item, installed):
         lines.append(discovery)
 
     return "\n".join(lines)
+
+
+def _provider_installed(provider, installed):
+    """Return whether a CLI provider appears installed by cli-hub name."""
+    if provider.get("kind") not in {"harness-cli", "public-cli"}:
+        return False
+    name = provider.get("name", "")
+    aliases = {name}
+    if name.startswith("cli-anything-"):
+        aliases.add(name.removeprefix("cli-anything-"))
+    return any(alias in installed for alias in aliases)
+
+
+def _format_requires(provider):
+    requires = provider.get("requires") or {}
+    parts = []
+    for key in ("binary", "env", "package"):
+        values = requires.get(key) or []
+        if isinstance(values, str):
+            values = [values]
+        if values:
+            parts.append(f"{key}: {', '.join(values)}")
+    return "; ".join(parts) if parts else "none"
+
+
+def _render_capability_tooling(matrix_item, installed):
+    """Render v2 capability/provider guidance for local matrix skills."""
+    capabilities = matrix_item.get("capabilities", [])
+    if not capabilities:
+        return ""
+
+    lines = [
+        "## Capability Provider Overview",
+        "",
+        "Pick providers per capability from task constraints and preflight facts. CLI providers show cli-hub install status; non-CLI providers list their preflight requirements.",
+        "",
+    ]
+
+    for capability in capabilities:
+        lines.append(f"### `{capability['id']}`")
+        if capability.get("intent"):
+            lines.append(capability["intent"])
+        lines.append("")
+
+        for provider in capability.get("providers", []):
+            kind = provider.get("kind", "provider")
+            quality = provider.get("quality_tier", "unknown")
+            cost = provider.get("cost_tier", "unknown")
+            offline = "offline" if provider.get("offline") else "online"
+            status = ""
+            if kind in {"harness-cli", "public-cli"}:
+                status = "installed" if _provider_installed(provider, installed) else "not installed"
+                status = f"; {status}"
+            requires = _format_requires(provider)
+            lines.append(
+                f"- `{provider.get('name', '')}` ({kind}; {quality}; {cost}; {offline}{status})"
+            )
+            lines.append(f"  - Requires: {requires}")
+            if provider.get("notes"):
+                lines.append(f"  - Notes: {provider['notes']}")
+
+        lines.append("")
+
+    recipes = matrix_item.get("recipes", [])
+    if recipes:
+        lines.append("## Recipes")
+        lines.append("")
+        for recipe in recipes:
+            capabilities_used = ", ".join(f"`{item}`" for item in recipe.get("capabilities_used", []))
+            lines.append(f"- `{recipe['id']}`: {recipe.get('description', '')}")
+            if capabilities_used:
+                lines.append(f"  - Uses: {capabilities_used}")
+        lines.append("")
+
+    known_gaps = matrix_item.get("known_gaps", [])
+    if known_gaps:
+        lines.append("## Known Gaps")
+        lines.append("")
+        for gap in known_gaps:
+            lines.append(f"- `{gap.get('capability', 'unknown')}`: {gap.get('reason', '')}")
+            if gap.get("workaround"):
+                lines.append(f"  - Workaround: {gap['workaround']}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
 
 
 def _render_stage_tooling(matrix_item, installed):
@@ -173,53 +263,11 @@ def _render_stage_tooling(matrix_item, installed):
         if alts.get("native"):
             lines.append(f"- Native: {', '.join(alts['native'])}")
 
-        hints = stage.get("skill_search_hints", [])
-        if hints:
-            cmds = ", ".join(f'`npx skills search "{h}"`' for h in hints[:2])
-            lines.append(f"- Search for skills: {cmds}")
-
         lines.append("")
 
     return "\n".join(lines)
 
 
 def _render_discovery_section(matrix_item):
-    """Render aggregated skill discovery commands from all stages."""
-    all_hints = []
-    for stage in matrix_item.get("stages", []):
-        for hint in stage.get("skill_search_hints", []):
-            if hint not in all_hints:
-                all_hints.append(hint)
-
-    if not all_hints:
-        return ""
-
-    lines = [
-        "## Skill Discovery Commands",
-        "",
-        "Search for relevant skills and tools across all stages:",
-        "",
-        "```bash",
-    ]
-
-    for hint in all_hints:
-        lines.append(f'npx skills search "{hint}"')
-
-    lines.extend([
-        "```",
-        "",
-        "Also check CLI-Hub:",
-        "",
-        "```bash",
-    ])
-
-    seen = set()
-    for hint in all_hints:
-        keyword = hint.split()[0].lower()
-        if keyword not in seen:
-            seen.add(keyword)
-            lines.append(f"cli-hub search {keyword}")
-
-    lines.append("```")
-
-    return "\n".join(lines)
+    """Registry search hints are metadata; generated skills list concrete providers."""
+    return ""

@@ -41,7 +41,7 @@ The v2 layout organizes each matrix around **capabilities** — verbs the agent 
 
 ## Capability
 
-A capability is a single verb the agent can invoke — not a stage, not a tool. Capabilities are intentionally coarse; a capability has 1..N providers and an agent picks among them using the decision rubric in SKILL.md.
+A capability is a single verb the agent can invoke — not a stage, not a tool. Capabilities are intentionally coarse; a capability has 1..N providers and an agent picks among them using task constraints, preflight facts, and the matrix SKILL.md guidance.
 
 ```jsonc
 {
@@ -54,7 +54,7 @@ A capability is a single verb the agent can invoke — not a stage, not a tool. 
 }
 ```
 
-Naming: `<domain>.<verb>`. Domains in v2: `visual`, `audio`, `text`, `composite`, `package`, `publish`. Verbs are lowercase, imperative-ish nouns (`generate`, `capture`, `edit`, `synthesize`, `transcribe`, `translate`, `assemble`, `overlay`, `thumbnail`, `encode`, `upload`).
+Naming: `<domain>.<verb>`. Current domains include `visual`, `video`, `media`, `script`, `audio`, `text`, `composite`, `quality`, `package`, and `publish`. Verbs are lowercase, imperative-ish nouns (`generate`, `search`, `download`, `analyze`, `storyboard`, `capture`, `synthesize`, `transcribe`, `caption`, `assemble`, `overlay`, `review`, `thumbnail`, `encode`, `upload`).
 
 ### Cross-matrix capabilities
 
@@ -68,7 +68,7 @@ A provider is one concrete way to satisfy a capability. Exactly one provider kin
 
 ```jsonc
 {
-  "kind": "api",                          // harness-cli | public-cli | python | native | api
+  "kind": "api",                          // agent-native | web-search | harness-cli | public-cli | python | native | api | agent-skill
   "name": "Runway Gen-4",
   "invocation_hint": "POST https://api.runway.ml/v1/...",
   "requires": {
@@ -85,26 +85,37 @@ A provider is one concrete way to satisfy a capability. Exactly one provider kin
 
 | Kind | Meaning | Typical `requires` |
 |---|---|---|
+| `agent-native` | Work the agent can perform directly without an external tool or skill | usually empty |
+| `web-search`   | Search/discovery work through the agent's web/search capability | usually empty; mark `offline: false` |
 | `harness-cli`  | A CLI-Anything harness (first-party) | `binary: ["cli-anything-<x>"]` |
 | `public-cli`   | Third-party CLI from `cli-hub`       | `binary: ["<entry>"]` |
 | `python`       | An importable Python package         | `package: ["..."]` |
 | `native`       | A system binary / shell pipeline     | `binary: ["ffmpeg", ...]` |
 | `api`          | A hosted API the agent calls directly | `env: ["..._API_KEY"]` |
+| `agent-skill`  | An external agent skill the agent can install or inspect | install command or SKILL.md URL in `notes` |
 
 `requires` is a **preflight contract**: the agent can deterministically check it before choosing the provider. If any `env`/`binary`/`package` is missing, that provider is unavailable *unless* the agent explicitly escalates (see below).
 
+`agent-skill` providers are not treated as deterministically installed or
+missing by preflight. They are reported separately as `agent-installable`,
+because the agent can usually install or inspect them from the provider notes,
+but their current local skill state is not machine-checkable by the same
+`env`/`binary`/`package` contract.
+
 ---
 
-## Decision rubric (canonical — SKILL.md references this)
+## Provider selection constraints (canonical — SKILL.md references this)
 
-When an agent needs to pick a provider for a capability, walk this ladder:
+When an agent needs to pick a provider for a capability:
 
-1. **Available & adequate.** Prefer providers whose `requires` is already satisfied in the environment, ranked by `quality_tier` then inverse `cost_tier`.
-2. **Free-to-install.** If none available, prefer `python` / `native` providers that can be installed in seconds (`pip install`, `apt`, single binary) without credentials.
-3. **Harness install.** If the task warrants it, install a `harness-cli` or `public-cli`.
-4. **Paid API escalation.** Only when (a) lower tiers can't meet the quality bar, (b) env already holds the key, or (c) the agent explicitly asks the user and the user consents. Never silently call a paid API without one of these conditions.
+1. Use preflight as an availability report, not as a provider selector.
+2. Treat provider order as documentation order only.
+3. Consider user requirements, available credentials, offline constraints, install cost, quality tier, cost tier, and provider notes.
+4. If a useful `agent-skill` appears, install or inspect it from `notes`; do not count it as already installed just because it appears in the registry.
+5. Install `python`, `native`, `harness-cli`, or `public-cli` providers only when they fit the task constraints.
+6. Escalate to paid or metered APIs only when the env already holds the key or the user explicitly consents. Never silently call a paid API.
 
-Providers marked `offline: true` are preferred when the user indicates an offline context.
+When the user indicates an offline context, filter to providers marked `offline: true`.
 
 ---
 
@@ -139,7 +150,7 @@ A recipe is a named composition of capabilities — not a pipeline. It tells the
 }
 ```
 
-Agents pick a recipe to narrow the capability set, then apply the decision rubric per capability.
+Agents pick a recipe to narrow the capability set, then choose providers per capability from task constraints and preflight facts.
 
 ---
 
@@ -161,7 +172,20 @@ Surfacing gaps in-schema lets the agent tell the user where the ecosystem genuin
 
 ## Preflight block (SKILL.md convention)
 
-Each SKILL.md declares a single preflight block the agent runs once per session:
+`cli-hub` can evaluate provider requirements directly:
+
+```bash
+cli-hub matrix preflight video-creation --json
+cli-hub matrix preflight video-creation --capability composite.assemble
+cli-hub matrix preflight video-creation --offline
+```
+
+The command checks declared `env`, `binary`, and `package` requirements and
+returns per-capability provider availability. Matrix SKILL.md files may still
+include a manual preflight block for agents running older `cli-hub` versions or
+for extra domain-specific probes.
+
+Each SKILL.md can declare a manual preflight block the agent runs once per session:
 
 ```bash
 # Per-capability detection: CLI installed? package importable? binary on PATH? env var set?
@@ -171,7 +195,7 @@ for b in ffmpeg sox convert magick; do command -v "$b" >/dev/null && echo "$b: y
 for e in RUNWAY_API_KEY ELEVENLABS_API_KEY MINIMAX_API_KEY OPENAI_API_KEY; do [ -n "${!e}" ] && echo "$e: set" || echo "$e: unset"; done
 ```
 
-The agent caches the result and consults it when the decision rubric runs.
+The agent caches the result and consults it before choosing providers.
 
 ---
 

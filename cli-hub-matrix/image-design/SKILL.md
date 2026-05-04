@@ -16,22 +16,25 @@ Schema: [`docs/cli-matrix/matrix_registry.schema.md`](../../docs/cli-matrix/matr
 ```bash
 cli-hub matrix install image-design
 cli-hub matrix info    image-design
+cli-hub matrix preflight image-design --json
 ```
 
 ---
 
-## Decision rubric
+## Provider selection constraints
 
-1. **Available & adequate** — ranked by quality then inverse cost.
-2. **Free-to-install** — Python libs / native binaries without credentials.
-3. **Harness / public CLI install** — when warranted.
-4. **Paid API escalation** — only when lower tiers can't meet the bar, env holds the key, or the user consents. AI image is the most paid-API-diverse capability — ask which provider the user prefers.
+1. Use preflight as an availability report, not as a provider selector.
+2. Treat provider order as documentation order only.
+3. Choose from user requirements, output quality bar, offline needs, credential state, install cost, and provider notes.
+4. Escalate to paid or metered APIs only when credentials are already present or the user explicitly consents. AI image is paid-API-diverse, so ask which provider the user wants when several credentialed choices are available.
 
 Offline context? GIMP, Krita, Inkscape, and local `diffusers` cover almost everything offline.
 
 ---
 
 ## Preflight
+
+Run `cli-hub matrix preflight image-design --json` first. Use the manual block below for extra probes or older `cli-hub` versions.
 
 ```bash
 cli-hub list --json

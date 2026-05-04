@@ -12,10 +12,18 @@ import requests
 
 from cli_hub import __version__
 from cli_hub.registry import fetch_registry, fetch_all_clis, get_cli, search_clis, list_categories
-from cli_hub.matrix import fetch_matrix_registry, fetch_all_matrices, get_matrix, search_matrices
+from cli_hub.matrix import (
+    check_provider_requirements,
+    fetch_matrix_registry,
+    fetch_all_matrices,
+    get_matrix,
+    preflight_matrix,
+    search_matrices,
+)
 from cli_hub.matrix_skill import (
     resolve_local_skill_path,
     render_matrix_skill_file,
+    _render_capability_tooling,
     _render_stage_tooling,
     _render_discovery_section,
 )
@@ -103,6 +111,7 @@ SAMPLE_MATRIX_REGISTRY = {
             "category": "video",
             "matrix": "cli-matrix",
             "matrix_id": "S1",
+            "schema_version": "2",
             "skill_md": "cli-hub-matrix/video-creation/SKILL.md",
             "clis": ["gimp", "blender", "audacity"],
             "stages": [
@@ -121,6 +130,72 @@ SAMPLE_MATRIX_REGISTRY = {
                     "alternatives": {"python": ["pydub"], "native": ["sox"]},
                     "skill_search_hints": ["audio editing"],
                 },
+            ],
+            "capabilities": [
+                {
+                    "id": "package.thumbnail",
+                    "intent": "Create a thumbnail image",
+                    "inputs": ["concept:text"],
+                    "outputs": ["image:path"],
+                    "skill_search_hints": ["thumbnail", "image editing"],
+                    "providers": [
+                        {
+                            "kind": "harness-cli",
+                            "name": "cli-anything-gimp",
+                            "requires": {"binary": ["cli-anything-gimp"]},
+                            "cost_tier": "free",
+                            "quality_tier": "high",
+                            "offline": True,
+                        },
+                        {
+                            "kind": "python",
+                            "name": "Pillow",
+                            "requires": {"package": ["PIL"]},
+                            "cost_tier": "free",
+                            "quality_tier": "good",
+                            "offline": True,
+                        },
+                    ],
+                },
+                {
+                    "id": "audio.capture",
+                    "intent": "Edit and process audio",
+                    "inputs": ["source:mic|file"],
+                    "outputs": ["audio_clip:path"],
+                    "skill_search_hints": ["audio editing"],
+                    "providers": [
+                        {
+                            "kind": "harness-cli",
+                            "name": "cli-anything-audacity",
+                            "requires": {"binary": ["cli-anything-audacity"]},
+                            "cost_tier": "free",
+                            "quality_tier": "high",
+                            "offline": True,
+                        },
+                        {
+                            "kind": "native",
+                            "name": "sox",
+                            "requires": {"binary": ["sox"]},
+                            "cost_tier": "free",
+                            "quality_tier": "high",
+                            "offline": True,
+                        },
+                    ],
+                },
+            ],
+            "recipes": [
+                {
+                    "id": "social-short",
+                    "description": "Create a short with a thumbnail and cleaned audio.",
+                    "capabilities_used": ["package.thumbnail", "audio.capture"],
+                }
+            ],
+            "known_gaps": [
+                {
+                    "capability": "publish.upload",
+                    "reason": "No platform upload CLI yet.",
+                    "workaround": "Ask the user to upload manually.",
+                }
             ],
         }
     ],
@@ -394,6 +469,14 @@ class TestMatrixRegistry:
         assert result["matrices"][0]["name"] == "video-creation"
         mock_get.assert_called_once()
 
+    @patch("cli_hub.matrix._load_local_registry", return_value=SAMPLE_MATRIX_REGISTRY)
+    @patch("cli_hub.matrix.requests.get", side_effect=requests.HTTPError("not found"))
+    def test_fetch_matrix_registry_falls_back_to_local_checkout(self, mock_get, mock_local, tmp_path):
+        with patch("cli_hub.matrix.MATRIX_CACHE_FILE", tmp_path / "matrix_cache.json"):
+            result = fetch_matrix_registry(force_refresh=True)
+        assert result["matrices"][0]["name"] == "video-creation"
+        mock_local.assert_called_once()
+
     @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
     def test_get_matrix_found(self, mock_fetch):
         matrix_item = get_matrix("video-creation")
@@ -405,6 +488,108 @@ class TestMatrixRegistry:
         results = search_matrices("video")
         assert len(results) == 1
         assert results[0]["name"] == "video-creation"
+
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_search_matrices_matches_capability_provider(self, mock_fetch):
+        results = search_matrices("Pillow")
+        assert len(results) == 1
+        assert results[0]["name"] == "video-creation"
+
+    @patch("cli_hub.matrix.importlib.util.find_spec")
+    @patch("cli_hub.matrix.shutil.which")
+    def test_check_provider_requirements(self, mock_which, mock_find_spec):
+        provider = {
+            "name": "Pillow",
+            "kind": "python",
+            "requires": {"package": ["PIL"], "binary": ["ffmpeg"], "env": ["MISSING_KEY"]},
+            "cost_tier": "free",
+            "quality_tier": "good",
+            "offline": True,
+        }
+        mock_which.return_value = "/usr/bin/ffmpeg"
+        mock_find_spec.return_value = MagicMock()
+
+        result = check_provider_requirements(provider)
+        assert result["available"] is False
+        assert result["present"]["binary"] == ["ffmpeg"]
+        assert result["present"]["package"] == ["PIL"]
+        assert result["missing"]["env"] == ["MISSING_KEY"]
+
+    @patch("cli_hub.matrix.importlib.util.find_spec")
+    @patch("cli_hub.matrix.shutil.which")
+    def test_check_provider_requirements_marks_agent_skill_installable(self, mock_which, mock_find_spec):
+        provider = {
+            "name": "video-scriptwriting skill",
+            "kind": "agent-skill",
+            "requires": {"binary": ["some-skill-cli"]},
+            "cost_tier": "free",
+            "quality_tier": "sota",
+            "offline": True,
+        }
+
+        result = check_provider_requirements(provider)
+        assert result["available"] is False
+        assert result["agent_installable"] is True
+        assert result["status"] == "agent-installable"
+        assert result["missing"] == {"env": [], "binary": [], "package": []}
+        mock_which.assert_not_called()
+        mock_find_spec.assert_not_called()
+
+    @patch("cli_hub.matrix.importlib.util.find_spec")
+    @patch("cli_hub.matrix.shutil.which")
+    def test_preflight_matrix_reports_provider_availability_without_recommendation(self, mock_which, mock_find_spec):
+        mock_which.side_effect = lambda binary: "/usr/bin/sox" if binary == "sox" else None
+        mock_find_spec.side_effect = lambda package: MagicMock() if package == "PIL" else None
+
+        payload = preflight_matrix(SAMPLE_MATRIX_REGISTRY["matrices"][0], capability_id="package.thumbnail")
+        assert payload["summary"]["capabilities"] == 1
+        assert payload["summary"]["available_providers"] == 1
+        assert "recommended" not in payload["capabilities"][0]
+        assert payload["capabilities"][0]["providers"][0]["name"] == "cli-anything-gimp"
+        assert payload["capabilities"][0]["providers"][0]["available"] is False
+        assert payload["capabilities"][0]["providers"][1]["name"] == "Pillow"
+        assert payload["capabilities"][0]["providers"][1]["available"] is True
+
+    @patch("cli_hub.matrix.shutil.which", return_value=None)
+    def test_preflight_matrix_keeps_agent_skills_out_of_available_counts(self, mock_which):
+        matrix_item = {
+            "name": "video-creation",
+            "display_name": "Video Creation & Editing",
+            "schema_version": "2",
+            "capabilities": [
+                {
+                    "id": "script.storyboard",
+                    "intent": "Plan a video",
+                    "providers": [
+                        {
+                            "kind": "agent-skill",
+                            "name": "video-scriptwriting skill",
+                            "requires": {},
+                            "cost_tier": "free",
+                            "quality_tier": "sota",
+                            "offline": True,
+                        },
+                        {
+                            "kind": "native",
+                            "name": "planner-cli",
+                            "requires": {"binary": ["planner-cli"]},
+                            "cost_tier": "free",
+                            "quality_tier": "good",
+                            "offline": True,
+                        },
+                    ],
+                }
+            ],
+        }
+
+        payload = preflight_matrix(matrix_item, capability_id="script.storyboard")
+        assert payload["summary"]["available_providers"] == 0
+        assert payload["summary"]["agent_installable_providers"] == 1
+        assert payload["summary"]["with_agent_installable_provider"] == 1
+        assert payload["capabilities"][0]["available_count"] == 0
+        assert payload["capabilities"][0]["agent_installable_count"] == 1
+        assert "recommended" not in payload["capabilities"][0]
+        assert payload["capabilities"][0]["providers"][0]["status"] == "agent-installable"
 
 
 class TestMatrixSkill:
@@ -435,7 +620,19 @@ class TestMatrixSkill:
         assert "## Installed CLI Skills" in content
         assert "/tmp/gimp/skills/SKILL.md" in content
         assert "skills/cli-anything-gimp/SKILL.md" in content
+        assert "## Capability Provider Overview" in content
         assert "not installed" in content
+
+    def test_render_capability_tooling_includes_providers_and_recipes(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_capability_tooling(matrix_item, installed={"gimp": {}})
+        assert "## Capability Provider Overview" in result
+        assert "`package.thumbnail`" in result
+        assert "`cli-anything-gimp`" in result
+        assert "binary: cli-anything-gimp" in result
+        assert "## Recipes" in result
+        assert "`social-short`" in result
+        assert "## Known Gaps" in result
 
 
 class TestMultiApproachRendering:
@@ -462,11 +659,11 @@ class TestMultiApproachRendering:
         assert "`gimp` (installed)" in result
         assert "`audacity` (not installed)" in result
 
-    def test_render_stage_tooling_includes_skill_search_hints(self):
+    def test_render_stage_tooling_omits_skill_search_hints(self):
         matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
         result = _render_stage_tooling(matrix_item, installed={})
-        assert 'npx skills search "thumbnail"' in result
-        assert 'npx skills search "audio editing"' in result
+        assert "npx skills search" not in result
+        assert "Search for skills" not in result
 
     def test_render_stage_tooling_backward_compat_no_goal(self):
         """Stages without 'goal' field are skipped gracefully."""
@@ -482,11 +679,17 @@ class TestMultiApproachRendering:
     def test_render_discovery_section(self):
         matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
         result = _render_discovery_section(matrix_item)
-        assert "## Skill Discovery Commands" in result
-        assert 'npx skills search "thumbnail"' in result
-        assert 'npx skills search "audio editing"' in result
-        assert "cli-hub search thumbnail" in result
-        assert "cli-hub search audio" in result
+        assert result == ""
+
+    def test_render_discovery_section_uses_capability_hints(self):
+        matrix_item = {
+            "name": "test",
+            "capabilities": [
+                {"id": "publish.upload", "skill_search_hints": ["youtube upload"]},
+            ],
+        }
+        result = _render_discovery_section(matrix_item)
+        assert result == ""
 
     def test_render_discovery_section_empty_when_no_hints(self):
         matrix_no_hints = {
@@ -506,7 +709,8 @@ class TestMultiApproachRendering:
         rendered = render_matrix_skill_file(SAMPLE_MATRIX_REGISTRY["matrices"][0], installed={"gimp": {}})
         content = Path(rendered).read_text()
         assert "## Stage Tooling Overview" in content
-        assert "## Skill Discovery Commands" in content
+        assert "## Skill Discovery Commands" not in content
+        assert "npx skills search" not in content
         assert "Create a thumbnail image" in content
 
 
@@ -1320,7 +1524,106 @@ class TestCLI:
         assert "cli-hub matrix install video-creation" in result.output
         assert "cli-hub-matrix/video-creation/SKILL.md" in result.output
         assert "Local skill: /tmp/video-creation.SKILL.md" in result.output
+        assert "Capabilities:" in result.output
+        assert "package.thumbnail" in result.output
+        assert "Known Gaps:" in result.output
         assert result.exit_code == 0
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_matrix", return_value=SAMPLE_MATRIX_REGISTRY["matrices"][0])
+    @patch("cli_hub.cli.preflight_matrix")
+    def test_matrix_preflight_command(self, mock_preflight, mock_get_matrix, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        mock_preflight.return_value = {
+            "matrix": {"display_name": "Video Creation & Editing"},
+            "offline": False,
+            "summary": {
+                "capabilities": 1,
+                "with_available_provider": 1,
+                "providers": 2,
+                "available_providers": 1,
+            },
+            "capabilities": [
+                {
+                    "id": "package.thumbnail",
+                    "intent": "Create a thumbnail image",
+                    "providers": [
+                        {
+                            "name": "Pillow",
+                            "kind": "python",
+                            "available": True,
+                            "quality_tier": "good",
+                            "cost_tier": "free",
+                            "missing": {"env": [], "binary": [], "package": []},
+                        }
+                    ],
+                }
+            ],
+        }
+        result = self.runner.invoke(main, ["matrix", "preflight", "video-creation"])
+        assert result.exit_code == 0
+        assert "Video Creation & Editing Preflight" in result.output
+        assert "Recommended:" not in result.output
+        assert "Pillow [python; good; free]" in result.output
+        mock_preflight.assert_called_once_with(
+            SAMPLE_MATRIX_REGISTRY["matrices"][0],
+            capability_id=None,
+            offline=False,
+        )
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_matrix", return_value=SAMPLE_MATRIX_REGISTRY["matrices"][0])
+    @patch("cli_hub.cli.preflight_matrix")
+    def test_matrix_preflight_command_renders_agent_skills_separately(
+        self,
+        mock_preflight,
+        mock_get_matrix,
+        mock_detect,
+        mock_visit,
+        mock_first_run,
+    ):
+        mock_detect.return_value = self.human_detection
+        mock_preflight.return_value = {
+            "matrix": {"display_name": "Video Creation & Editing"},
+            "offline": False,
+            "summary": {
+                "capabilities": 1,
+                "with_available_provider": 0,
+                "with_agent_installable_provider": 1,
+                "providers": 1,
+                "available_providers": 0,
+                "agent_installable_providers": 1,
+            },
+            "capabilities": [
+                {
+                    "id": "script.storyboard",
+                    "intent": "Plan a video",
+                    "providers": [
+                        {
+                            "name": "video-scriptwriting skill",
+                            "kind": "agent-skill",
+                            "available": False,
+                            "agent_installable": True,
+                            "quality_tier": "sota",
+                            "cost_tier": "free",
+                            "missing": {"env": [], "binary": [], "package": []},
+                        }
+                    ],
+                }
+            ],
+        }
+
+        result = self.runner.invoke(main, ["matrix", "preflight", "video-creation"])
+        assert result.exit_code == 0
+        assert "1 agent-installable skill provider is not counted as installed or missing" in result.output
+        assert "Recommended:" not in result.output
+        assert "Agent-installable:" not in result.output
+        assert "video-scriptwriting skill [agent-skill; sota; free] agent-installable" in result.output
+        assert "missing:" not in result.output
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")

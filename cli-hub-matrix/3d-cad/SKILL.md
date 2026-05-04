@@ -17,22 +17,25 @@ Schema: [`docs/cli-matrix/matrix_registry.schema.md`](../../docs/cli-matrix/matr
 ```bash
 cli-hub matrix install 3d-cad
 cli-hub matrix info    3d-cad
+cli-hub matrix preflight 3d-cad --json
 ```
 
 ---
 
-## Decision rubric
+## Provider selection constraints
 
-1. **Available & adequate** — ranked by quality then inverse cost.
-2. **Free-to-install** — Python libs / native binaries without credentials.
-3. **Harness / public CLI install** — when warranted.
-4. **Paid API escalation** — only when lower tiers can't meet the bar, env holds the key, or the user consents.
+1. Use preflight as an availability report, not as a provider selector.
+2. Treat provider order as documentation order only.
+3. Choose from user requirements, output quality bar, offline needs, credential state, install cost, and provider notes.
+4. Escalate to paid or metered APIs only when credentials are already present or the user explicitly consents.
 
 Offline context? Most of this matrix is offline-first; rendering and photogrammetry are the exceptions.
 
 ---
 
 ## Preflight
+
+Run `cli-hub matrix preflight 3d-cad --json` first. Use the manual block below for extra probes or older `cli-hub` versions.
 
 ```bash
 cli-hub list --json
@@ -225,5 +228,5 @@ Known gap — agent-driven sculpting is impractical beyond Blender scripts.
 - **Parametric first, mesh later.** Start in `model.parametric` when the object has dimensions; `model.mesh` when it's organic.
 - **Always bake before export.** When handing off to `export.engine`, apply modifiers and bake materials — runtime engines don't read Blender shader graphs.
 - **Check manifold before slicing.** `fabricate.slice` fails silently on non-manifold meshes; use `trimesh.Trimesh.is_volume` or pymeshlab's manifold check first.
-- **Offline by default.** This matrix is the most offline-capable — API escalation is rarely needed except for photogrammetry-at-scale.
+- **Offline-capable baseline.** This matrix is highly offline-capable — API escalation is rarely needed except for photogrammetry-at-scale.
 - **Workspace discipline.** Keep `.FCStd` / `.blend` / `.ply` / `.stl` / `.gcode` in one project folder so the chain of transformations is reproducible.

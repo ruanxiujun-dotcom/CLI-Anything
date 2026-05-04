@@ -315,6 +315,8 @@ assets/gen_typing_gif.py
 /docs/hub/registry-dates.json
 !/docs/cli-matrix/
 !/docs/cli-matrix/**
+/docs/cli-matrix/test-plans/video-challenge-runs/
+/docs/cli-matrix/test-plans/youtube-cookies.txt
 !/notebooklm/
 /notebooklm/*
 /notebooklm/.*

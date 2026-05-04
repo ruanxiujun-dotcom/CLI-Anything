@@ -10,7 +10,7 @@ import click
 
 from cli_hub import __version__
 from cli_hub.registry import fetch_all_clis, get_cli, search_clis, list_categories
-from cli_hub.matrix import fetch_all_matrices, get_matrix, search_matrices
+from cli_hub.matrix import fetch_all_matrices, get_matrix, preflight_matrix, search_matrices
 from cli_hub.matrix_skill import get_rendered_matrix_skill_path
 from cli_hub.installer import install_cli, uninstall_cli, get_installed, update_cli, install_matrix
 from cli_hub.analytics import (
@@ -70,6 +70,11 @@ def _source_tag(cli):
         manager = cli.get("package_manager") or cli.get("install_strategy") or "public"
         return click.style(f" {manager}", fg="yellow")
     return ""
+
+
+def _plural(count, singular, plural=None):
+    """Return a compact count label with basic pluralization."""
+    return f"{count} {singular if count == 1 else (plural or singular + 's')}"
 
 
 @main.command()
@@ -417,7 +422,7 @@ def list_matrices(as_json):
 @click.argument("query")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
 def matrix_search(query, as_json):
-    """Search matrices by name, description, or category."""
+    """Search matrices by name, capabilities, providers, recipes, or gaps."""
     results = search_matrices(query)
 
     if as_json:
@@ -442,7 +447,8 @@ def matrix_search(query, as_json):
 
 @matrix.command("info")
 @click.argument("name")
-def matrix_info(name):
+@click.option("--json", "as_json", is_flag=True, help="Output matrix metadata as JSON.")
+def matrix_info(name, as_json):
     """Show details for a specific matrix."""
     matrix_item = get_matrix(name)
     if not matrix_item:
@@ -453,9 +459,21 @@ def matrix_info(name):
     cli_names = matrix_item.get("clis", [])
     installed_count = sum(1 for cli_name in cli_names if cli_name in installed)
 
+    if as_json:
+        payload = dict(matrix_item)
+        payload["_installed"] = {
+            "count": installed_count,
+            "total": len(cli_names),
+            "clis": [cli_name for cli_name in cli_names if cli_name in installed],
+        }
+        click.echo(json_mod.dumps(payload, indent=2))
+        return
+
     click.secho(f"\n  {matrix_item['display_name']}", bold=True)
     click.echo(f"  {matrix_item['description']}")
     click.echo(f"  Matrix:      {matrix_item.get('matrix', 'N/A')} {matrix_item.get('matrix_id', '')}".rstrip())
+    if matrix_item.get("schema_version"):
+        click.echo(f"  Schema:      v{matrix_item['schema_version']}")
     click.echo(f"  Category:    {matrix_item.get('category', 'N/A')}")
     click.echo(f"  CLIs:        {len(cli_names)}")
     click.echo(f"  Installed:   {installed_count}/{len(cli_names)}")
@@ -481,8 +499,108 @@ def matrix_info(name):
             goal_suffix = f" -- {goal}" if goal else ""
             click.echo(f"    - {stage['name']}: {members}{goal_suffix}")
 
+    capabilities = matrix_item.get("capabilities", [])
+    if capabilities:
+        click.echo("\n  Capabilities:")
+        for capability in capabilities:
+            providers = capability.get("providers", [])
+            cli_provider_count = sum(
+                1 for provider in providers
+                if provider.get("kind") in {"harness-cli", "public-cli"}
+            )
+            offline_count = sum(1 for provider in providers if provider.get("offline"))
+            click.echo(
+                f"    - {capability['id']}: "
+                f"{_plural(len(providers), 'provider')} "
+                f"({_plural(cli_provider_count, 'CLI')}, {offline_count} offline)"
+            )
+            if capability.get("intent"):
+                click.echo(f"      {capability['intent']}")
+
+    recipes = matrix_item.get("recipes", [])
+    if recipes:
+        click.echo("\n  Recipes:")
+        for recipe in recipes:
+            capability_count = len(recipe.get("capabilities_used", []))
+            click.echo(f"    - {recipe['id']}: {capability_count} capabilities - {recipe.get('description', '')}")
+
+    known_gaps = matrix_item.get("known_gaps", [])
+    if known_gaps:
+        click.echo("\n  Known Gaps:")
+        for gap in known_gaps:
+            click.echo(f"    - {gap.get('capability', 'unknown')}: {gap.get('reason', '')}")
+
     click.echo(f"\n  Install: cli-hub matrix install {matrix_item['name']}")
+    if capabilities:
+        click.echo(f"  Preflight: cli-hub matrix preflight {matrix_item['name']}")
     click.echo()
+
+
+@matrix.command("preflight")
+@click.argument("name")
+@click.option("--capability", "-c", default=None, help="Only check one capability id.")
+@click.option("--offline", is_flag=True, help="Only consider offline-capable providers.")
+@click.option("--json", "as_json", is_flag=True, help="Output provider availability as JSON.")
+def matrix_preflight(name, capability, offline, as_json):
+    """Check which matrix providers are available in the current environment."""
+    matrix_item = get_matrix(name)
+    if not matrix_item:
+        click.secho(f"Matrix '{name}' not found.", fg="red", err=True)
+        raise SystemExit(1)
+
+    payload = preflight_matrix(matrix_item, capability_id=capability, offline=offline)
+    if as_json:
+        click.echo(json_mod.dumps(payload, indent=2))
+        return
+
+    capabilities = payload["capabilities"]
+    if not capabilities:
+        target = capability or "capabilities"
+        click.secho(f"No capability data found for {target}.", fg="yellow")
+        raise SystemExit(1)
+
+    summary = payload["summary"]
+    click.secho(f"\n  {payload['matrix']['display_name']} Preflight", bold=True)
+    mode = "offline providers only" if offline else "all providers"
+    click.echo(
+        f"  {summary['with_available_provider']}/{summary['capabilities']} capabilities "
+        f"have an available provider "
+        f"({summary['available_providers']}/{_plural(summary['providers'], 'provider')}, {mode})"
+    )
+    agent_installable = summary.get("agent_installable_providers", 0)
+    if agent_installable:
+        verb = "is" if agent_installable == 1 else "are"
+        click.echo(
+            f"  {_plural(agent_installable, 'agent-installable skill provider')} "
+            f"{verb} not counted as installed or missing"
+        )
+
+    for capability_result in capabilities:
+        click.echo(f"\n  {capability_result['id']}")
+        click.echo(f"    {capability_result['intent']}")
+
+        for provider in capability_result["providers"][:4]:
+            if provider.get("agent_installable"):
+                marker = click.style("○", fg="bright_black")
+            elif provider["available"]:
+                marker = click.style("✓", fg="green")
+            else:
+                marker = click.style("·", fg="yellow")
+            missing = [
+                item
+                for values in provider["missing"].values()
+                for item in values
+            ]
+            if provider.get("agent_installable"):
+                suffix = " agent-installable"
+            elif provider["available"]:
+                suffix = ""
+            else:
+                suffix = f" missing: {', '.join(missing) or 'requirements'}"
+            click.echo(
+                f"    {marker} {provider['name']} "
+                f"[{provider['kind']}; {provider['quality_tier']}; {provider['cost_tier']}]{suffix}"
+            )
 
 
 @matrix.command("install")
@@ -515,5 +633,7 @@ def matrix_install(name):
 
     if not success:
         raise SystemExit(1)
+
+
 if __name__ == "__main__":
     main()

@@ -20,24 +20,26 @@ Schema: [`matrix_registry.schema.md`](matrix_registry.schema.md). Reference impl
 
 A matrix is "complete" when every capability has at least one practical agent path — CLI today, direct API tomorrow, Python package or native command as the fallback. Two quality axes:
 
-1. **Coverage + depth** — every capability has multiple providers ranked by cost/quality/offline so the agent can always pick *something* adequate.
+1. **Coverage + depth** — every capability has multiple providers annotated by cost/quality/offline so the agent can pick a task-appropriate path.
 2. **Full picture** — when our CLI fails or is inefficient, the matrix explicitly names the external tool/API/library the agent should reach for, including credential requirements. The agent uses a `suggest-to-user` template to escalate transparently rather than silently skipping or silently burning credits.
 
 Provider layers (each capability should have some of each where possible):
 
-- **First-party** — CLI-Anything harnesses; preferred default where available.
+- **First-party** — CLI-Anything harnesses available for agent-native workflows.
 - **Public CLI** — `cli-hub` third-party CLIs; broaden coverage fast.
 - **Python / native** — free fallbacks an agent can use immediately (`moviepy`, `ffmpeg`, `Pillow`, `whisper`).
 - **Cloud API** — when a hosted model is the fastest route to sota quality; escalated with an explicit suggest-to-user prompt.
 
-### Decision rubric (canonical — SKILL.md files reference this)
+### Provider selection constraints (canonical — SKILL.md files reference this)
 
-Per capability, the agent walks this ladder:
+Per capability, the agent evaluates:
 
-1. **Available & adequate** — providers whose `requires` is already satisfied, ranked by quality then inverse cost.
-2. **Free-to-install** — Python libs / native binaries installable in seconds without credentials.
-3. **Harness / public CLI install** — install a first-party or public CLI when warranted.
-4. **Paid API escalation** — only when lower tiers can't meet the bar, the env already holds the key, **or** the user explicitly consents via the suggest-to-user prompt.
+0. **Preflight once** — run `cli-hub matrix preflight <matrix> --json` to check
+   declared `env`, `binary`, and `package` requirements before choosing providers.
+1. **Task fit** — user requirements, output quality bar, latency, budget, and offline constraints.
+2. **Local state** — satisfied requirements, missing binaries/packages/env vars, and install cost.
+3. **Install options** — Python libs, native binaries, harness CLIs, public CLIs, and agent skills when they fit the task.
+4. **Paid API escalation** — only when the env already holds the key **or** the user explicitly consents via the suggest-to-user prompt.
 
 Offline context? Filter to `offline: true` providers only.
 
@@ -72,21 +74,28 @@ See [`cli-hub-matrix/video-creation/SKILL.md`](../cli-hub-matrix/video-creation/
 
 | Capability | Harness CLI | Public CLI | Python / native | Paid API (escalate) |
 |---|---|---|---|---|
-| `visual.generate` | — | `generate-veo-video`, `jimeng` | `diffusers` (SVD/AnimateDiff), `replicate` | Runway Gen-4, Kling, Pika, **Seedance** |
+| `script.storyboard` | — | optional skills: `storyboard-creation`, `remotion-best-practices` | agent-native creative direction, story/audio arc, beat map, shot list | — |
+| `video.search` | — | — | web search + source filters | — |
+| `video.download` | — | `yt-dlp`, `you-get`, `lux`, `BBDown` | `ffmpeg` for normalization | — |
+| `music.search` | — | `yt-dlp` search extractors, `spotdl` metadata/search | web search + source filters | — |
+| `music.download` | — | `yt-dlp`, `spotdl`, `scdl`, `bandcamp-dl` | local file import + `ffmpeg` | — |
 | `visual.capture` | `openscreen`, `obs-studio` | — | `ffmpeg x11grab`, `screencapture`, `mss+cv2` | — |
+| `visual.generate` | — | `generate-veo-video`, `jimeng` | — | Runway Gen-4, Kling, Pika, **Seedance** |
 | `audio.capture` | `audacity` | — | `ffmpeg`, `sox`, `pydub`, `noisereduce` | — |
-| `audio.synthesize` | — | `elevenlabs`, `minimax-cli` | `edge-tts`, `TTS` (coqui), `pyttsx3` | OpenAI TTS, Google TTS, Polly, Azure |
-| `audio.music` | — | `suno`, `minimax-cli` | `audiocraft` (MusicGen), `stable-audio-tools` | Udio |
+| `audio.synthesize` | — | `elevenlabs`, `minimax-cli` | `edge-tts` | OpenAI TTS, Google TTS |
+| `music.generate` | — | `suno`, `minimax-cli` | story/audio-plan-guided structure | Udio |
+| `media.analyze` | — | PySceneDetect `scenedetect` | PaddleOCR on keyframes | Google Video Intelligence, TwelveLabs |
 | `text.transcribe` | `videocaptioner` | — | `whisper`, `faster-whisper`, `stable-ts` | AssemblyAI, Deepgram, Google STT |
-| `text.translate` | — | — | `argos-translate` | OpenAI/Claude, DeepL |
-| `composite.assemble` | `kdenlive`, `shotcut` | — | `moviepy`, `ffmpeg-python`, `ffmpeg` | — |
-| `composite.overlay` | (via NLE) | — | `ffmpeg -vf subtitles/overlay`, `moviepy` | — |
+| `text.caption` | — | HyperFrames captions skill (kinetic/digital only) | local captions reference module, ASS + `ffmpeg`, `pysubs2`, `moviepy`/Pillow overlays | — |
+| `composite.assemble` | `kdenlive`, `shotcut` | HyperFrames skill/CLI (digital launch only) | `moviepy`, `ffmpeg-python`, `ffmpeg`; follow creative direction | — |
+| `composite.overlay` | — | — | `ffmpeg -vf subtitles/overlay`, `moviepy` | — |
 | `package.thumbnail` | `gimp`, `krita`, `inkscape` | — | `Pillow`, `cairosvg`, `html2image`, `ffmpeg`, ImageMagick | OpenAI GPT-Image-1, Nano Banana, Ideogram, Stability |
 | `package.encode` | (via NLE) | — | `ffmpeg` | — |
+| `quality.review` | — | `ffmpeg-quality-metrics` | `ffmpeg` / `ffprobe`, MediaInfo CLI; story/audio rubric | — |
 | `publish.upload` | ❌ | ❌ | — | YouTube, TikTok, Bilibili, Instagram (**known gap**) |
 
-**Recipes**: `ai-short`, `screencast-tutorial`, `talking-head-explainer`, `podcast-to-video`.
-**Known gaps**: `publish.upload` (no CLI anywhere); `visual.generate` sota tier is paid-API-only.
+**Recipes**: `ai-short`, `screencast-tutorial`, `talking-head-explainer`, `podcast-to-video`, `found-footage-montage`, `existing-song-music-video`, `digital-product-launch`.
+**Known gaps**: `publish.upload` (no CLI anywhere); `visual.generate` sota tier is paid-API-only; `rights.provenance` has no automated verifier for web-sourced media; external agent skill install state is not yet preflightable.
 **Verdict**: strong across generation/edit/package; distribution gap persists.
 
 ---
@@ -107,7 +116,6 @@ The strongest scenario in the matrix today. First-party harnesses cover search, 
 | `document.format` | `libreoffice` | — | `pandoc` (native), `docx2pdf`, `weasyprint` | CloudConvert |
 | `document.pdf` | partial (`libreoffice`) | — | `pypdf`, `pdfplumber`, `pdf2image`, native `qpdf`/`pdftk` | Adobe PDF Services, Smallpdf |
 | `diagram.create` | `drawio`, `mermaid` | — | `graphviz`, `mermaid-cli`, `plantuml` | — |
-| `text.translate` | — | — | `argos-translate` | DeepL, Google Translate, OpenAI/Claude |
 | `publish.web` | — | `contentful`, `sanity` | `hugo` (native), `mkdocs`, `jekyll`, `pelican` | WordPress REST, Ghost Admin API, Medium API |
 | `publish.latex` | — | — | `latexmk` + `texlive` (native), `pylatex` | Overleaf API |
 
@@ -189,7 +197,7 @@ All creation capabilities are strongly covered; Figma remains the single highest
 
 **Recipes**: `social-card` (visual.generate → edit.raster → publish), `logo-set` (visual.edit.vector → export variants), `ui-wireframe` (visual.mockup → export), `photo-batch` (photo.develop → edit.raster → photo.library → publish), `icon-pack` (visual.edit.vector → batch export).
 
-**Known gaps**: **Figma** (also blocks S7 UI/UX); `photo.library` and `photo.develop` have strong native CLIs but no harness. AI image escalation is the most paid-API-diverse capability in the matrix — the agent should consult the user's preferred provider.
+**Known gaps**: **Figma** (also blocks S7 UI/UX); `photo.library` and `photo.develop` have strong native CLIs but no harness. AI image escalation is the most paid-API-diverse capability in the matrix — the agent should ask which provider the user wants when several credentialed choices are available.
 
 **Verdict**: creation side is the deepest in the matrix after S2 — raster (GIMP + Krita), vector (Inkscape), AI (ComfyUI + Jimeng + 7 APIs), diagram (drawio + mermaid). Figma is the headline gap.
 
@@ -203,7 +211,7 @@ All creation capabilities are strongly covered; Figma remains the single highest
 | Audio edit | `audacity` | |
 | Record | `obs-studio` | |
 | **DAW** | ❌ | **Reaper, Ableton, Logic, FL** |
-| **AI music** | `suno`, `minimax-cli` | Udio, MusicGen |
+| **AI music** | `suno`, `minimax-cli` | Udio |
 | **Voice/TTS** | `elevenlabs`, `minimax-cli` | OpenAI TTS |
 | Distribution | ❌ | Spotify (track mgmt), SoundCloud, DistroKid |
 
@@ -363,7 +371,7 @@ Ranked by **how many scenarios unblock**:
 | 🔥 **Slack / Linear / Gmail** | 2 (S7, S11) | completes Western team-comms |
 | ⭐ **Notion** | 2 (S2, S11) | closes knowledge stack and team notes |
 | ⭐ **Figma** | 2 (S5, S7) | UI/UX agent loop |
-| ⭐ **Udio / MusicGen** | 2 (S1, S6) | deeper AI music coverage beyond Suno |
+| ⭐ **Udio** | 2 (S1, S6) | deeper hosted AI music coverage beyond Suno |
 | ⭐ **MiniMax Voice / OpenAI TTS** | 3 (S1, S6, S8) | broader TTS coverage beyond ElevenLabs |
 | ⭐ **HF + W&B + training harness** | 1 (S9) | full ML loop |
 | ⭐ **3D texturing (Substance) + slicer (Cura/Bambu)** | 1 (S3) | 3D-to-physical loop |
@@ -372,11 +380,11 @@ Ranked by **how many scenarios unblock**:
 
 ---
 
-## Recommendations — making the matrix a first-class concept
+## Next Steps — making the matrix a first-class concept
 
 1. **Add a `scenarios` field** to each registry entry (one CLI can belong to several). Then `cli-hub` can offer `cli-hub scenarios list` and `cli-hub scenarios <name> --missing` to directly surface gaps to an agent.
 2. **Flip the category system** from taxonomy (`image`, `video`, `ai`) to **capability domain** (`visual`, `audio`, `text`, `composite`, `package`, `publish`). Capability reveals closed-loop gaps; category doesn't.
-3. **Define each matrix as an ecosystem bundle, not just an install bundle**: every capability should document the best available first-party CLI, adjacent public CLIs, relevant APIs, and traditional package/native fallbacks.
+3. **Define each matrix as an ecosystem bundle, not just an install bundle**: every capability should document available first-party CLIs, adjacent public CLIs, relevant APIs, and traditional package/native fallbacks.
 4. **Seed matrix installs** in cli-hub for the installable portion only: `cli-hub matrix install <name>` grabs the CLIs, while the paired matrix docs also name non-installable APIs and library-level options.
 5. **Publish this matrix as a living doc** — gaps in the matrix *are* the contributor roadmap. Missing CLIs are one category of gap; sometimes the immediate improvement is documenting the right API or fallback package before we build a harness.
 

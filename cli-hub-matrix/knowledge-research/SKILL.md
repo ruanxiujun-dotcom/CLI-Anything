@@ -17,16 +17,17 @@ Schema: [`docs/cli-matrix/matrix_registry.schema.md`](../../docs/cli-matrix/matr
 ```bash
 cli-hub matrix install knowledge-research
 cli-hub matrix info    knowledge-research
+cli-hub matrix preflight knowledge-research --json
 ```
 
 ---
 
-## Decision rubric
+## Provider selection constraints
 
-1. **Available & adequate** — ranked by quality then inverse cost.
-2. **Free-to-install** — Python libs / native binaries without credentials.
-3. **Harness / public CLI install** — when warranted.
-4. **Paid API escalation** — only when lower tiers can't meet the bar, env holds the key, or the user consents.
+1. Use preflight as an availability report, not as a provider selector.
+2. Treat provider order as documentation order only.
+3. Choose from user requirements, output quality bar, offline needs, credential state, install cost, and provider notes.
+4. Escalate to paid or metered APIs only when credentials are already present or the user explicitly consents.
 
 Offline context? Filter to `offline: true` providers.
 
@@ -34,20 +35,22 @@ Offline context? Filter to `offline: true` providers.
 
 ## Preflight
 
+Run `cli-hub matrix preflight knowledge-research --json` first. Use the manual block below for extra probes or older `cli-hub` versions.
+
 ```bash
 cli-hub list --json
 python - <<'PY'
 import importlib.util
 for m in ("pyzotero","bibtexparser","trafilatura","readability","httpx","playwright",
           "python_docx","openpyxl","pptx","reportlab","pypdf","pdfplumber","weasyprint",
-          "langchain","llama_index","haystack","argostranslate"):
+          "langchain","llama_index","haystack"):
     print(m, importlib.util.find_spec(m) is not None)
 PY
 for b in pandoc qpdf pdftk exiftool latexmk tex dot mermaid plantuml hugo mkdocs jekyll; do
   command -v "$b" >/dev/null && echo "$b: yes" || echo "$b: no"
 done
 for e in OPENAI_API_KEY ANTHROPIC_API_KEY GOOGLE_API_KEY PERPLEXITY_API_KEY TAVILY_API_KEY \
-         SERPAPI_API_KEY BRAVE_API_KEY FIRECRAWL_API_KEY DEEPL_API_KEY \
+         SERPAPI_API_KEY BRAVE_API_KEY FIRECRAWL_API_KEY \
          NOTION_API_KEY SEMANTIC_SCHOLAR_API_KEY WORDPRESS_TOKEN GHOST_ADMIN_KEY; do
   [ -n "${!e}" ] && echo "$e: set" || echo "$e: unset"
 done
@@ -175,15 +178,6 @@ Example: *To enable live Notion sync via the Notion API, please set `NOTION_API_
 | `cli-anything-mermaid` | harness-cli | mermaid-cli | free | high | yes |
 | `graphviz` (`dot`) | native | binary | free | high | yes |
 | `plantuml` | native | binary | free | high | yes |
-
-### `text.translate` — translation
-
-| Provider | Kind | Requires | Cost | Quality | Offline |
-|---|---|---|---|---|---|
-| `argos-translate` | python | pkg + lang packs | free | good | yes |
-| DeepL | api | `DEEPL_API_KEY` | metered | sota | no |
-| Google Translate | api | `GOOGLE_API_KEY` | metered | high | no |
-| OpenAI / Claude | api | model key | metered | sota | no |
 
 ### `publish.web` — publish articles / blog posts
 

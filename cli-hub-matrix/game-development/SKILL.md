@@ -16,20 +16,23 @@ Schema: [`docs/cli-matrix/matrix_registry.schema.md`](../../docs/cli-matrix/matr
 ```bash
 cli-hub matrix install game-development
 cli-hub matrix info    game-development
+cli-hub matrix preflight game-development --json
 ```
 
 ---
 
-## Decision rubric
+## Provider selection constraints
 
-1. **Available & adequate** — ranked by quality then inverse cost.
-2. **Free-to-install** — Python libs / native binaries without credentials.
-3. **Harness / public CLI install** — when warranted.
-4. **Paid API escalation** — only when lower tiers can't meet the bar, env holds the key, or the user consents.
+1. Use preflight as an availability report, not as a provider selector.
+2. Treat provider order as documentation order only.
+3. Choose from user requirements, output quality bar, offline needs, credential state, install cost, and provider notes.
+4. Escalate to paid or metered APIs only when credentials are already present or the user explicitly consents.
 
 ---
 
 ## Preflight
+
+Run `cli-hub matrix preflight game-development --json` first. Use the manual block below for extra probes or older `cli-hub` versions.
 
 ```bash
 cli-hub list --json
@@ -62,7 +65,7 @@ To enable <capability> via <provider>, please set <ENV_VAR>.
 Reply 'skip' to fall back to <next provider>.
 ```
 
-Example: *To publish to Steam, please install `steamcmd` and set `STEAM_USERNAME` + `STEAM_PASSWORD` (a dedicated build account is strongly recommended). Cost: one-time $100 Steamworks fee. Reply 'skip' to fall back to itch.io via `butler` which only needs `ITCH_API_KEY`.*
+Example: *To publish to Steam, please install `steamcmd` and set `STEAM_USERNAME` + `STEAM_PASSWORD` (use a dedicated build account to limit credential risk). Cost: one-time $100 Steamworks fee. Reply 'skip' to fall back to itch.io via `butler` which only needs `ITCH_API_KEY`.*
 
 ---
 
