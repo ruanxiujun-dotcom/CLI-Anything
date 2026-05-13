@@ -1,5 +1,5 @@
 ---
-name: cli-anything-nslogger
+name: "cli-anything-nslogger"
 description: CLI harness for NSLogger — parse, filter, export, and monitor NSLogger log files (.rawnsloggerdata / .nsloggerdata)
 version: 0.1.0
 install: pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=nslogger/agent-harness
