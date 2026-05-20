@@ -296,19 +296,22 @@ def test_backend_run_command_error(monkeypatch):
 
 
 def test_backend_run_command_node_warning_passes(monkeypatch):
+    """A non-zero exit caused purely by benign Node warnings must not raise."""
+    _WARNING = "(node:1234) [DEP0040] DeprecationWarning: The `punycode` module is deprecated."
+
     class Proc:
         returncode = 1
         stdout = ""
-        stderr = "(node:1234) [DEP0040] DeprecationWarning: The `punycode` module is deprecated."
+        stderr = _WARNING
 
     monkeypatch.setattr(joplin_backend, "find_joplin", lambda _: "joplin")
     monkeypatch.setattr(joplin_backend.subprocess, "run", lambda *a, **k: Proc())
     cfg = joplin_backend.BackendConfig(binary="joplin", profile=None)
     result = joplin_backend.run_joplin_command(["ls"], cfg)
     assert result["returncode"] == 1
-    # Stripped stdout/stderr should be empty so JSON callers don't see warning lines.
+    # Raw streams are preserved verbatim — callers inspect them directly.
     assert result["stdout"] == ""
-    assert result["stderr"] == ""
+    assert result["stderr"] == _WARNING
 
 
 def test_backend_run_command_real_error_alongside_warning_raises(monkeypatch):
@@ -333,20 +336,65 @@ def test_backend_run_command_real_error_alongside_warning_raises(monkeypatch):
     assert "DEP0040" not in str(excinfo.value)
 
 
-def test_backend_run_command_strips_warning_from_stdout(monkeypatch):
+def test_backend_run_command_preserves_raw_stdout(monkeypatch):
+    """run_joplin_command must pass stdout verbatim to callers.
+
+    Multi-line note content, exported markdown, or JSON payloads with internal
+    blank lines must not be altered.  The warning filter is only used internally
+    for the error-decision branch.
+    """
+    _WARN = "(node:7) [DEP0040] DeprecationWarning: The `punycode` module is deprecated."
+    _JSON = '[{"title":"NoteA"}]'
+    _RAW = f"{_WARN}\n{_JSON}"
+
     class Proc:
         returncode = 0
-        stdout = (
-            "(node:7) [DEP0040] DeprecationWarning: The `punycode` module is deprecated.\n"
-            "[{\"title\":\"NoteA\"}]"
-        )
+        stdout = _RAW
         stderr = ""
 
     monkeypatch.setattr(joplin_backend, "find_joplin", lambda _: "joplin")
     monkeypatch.setattr(joplin_backend.subprocess, "run", lambda *a, **k: Proc())
     cfg = joplin_backend.BackendConfig(binary="joplin", profile=None)
     result = joplin_backend.run_joplin_command(["ls", "--format", "json"], cfg)
-    assert result["stdout"] == "[{\"title\":\"NoteA\"}]"
+    # Verbatim: the warning line is still present in the raw result.
+    assert result["stdout"] == _RAW
+
+
+def test_backend_run_json_parses_despite_warning_prefix(monkeypatch):
+    """run_joplin_json must produce valid JSON data even when a Node warning is
+    emitted to stdout ahead of the JSON payload (a known Joplin-on-Node20 issue
+    where the warning sometimes leaks through to stdout rather than stderr)."""
+    _WARN = "(node:7) [DEP0040] DeprecationWarning: The `punycode` module is deprecated."
+    _JSON = '[{"title":"NoteA"}]'
+
+    class Proc:
+        returncode = 0
+        stdout = f"{_WARN}\n{_JSON}"
+        stderr = ""
+
+    monkeypatch.setattr(joplin_backend, "find_joplin", lambda _: "joplin")
+    monkeypatch.setattr(joplin_backend.subprocess, "run", lambda *a, **k: Proc())
+    cfg = joplin_backend.BackendConfig(binary="joplin", profile=None)
+    result = joplin_backend.run_joplin_json(["ls", "--format", "json"], cfg)
+    # The caller receives usable structured data.
+    assert isinstance(result["data"], list)
+    assert result["data"][0]["title"] == "NoteA"
+
+
+def test_backend_run_command_preserves_multiline_note_body(monkeypatch):
+    """Blank lines inside legitimate note content must survive verbatim."""
+    _BODY = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
+
+    class Proc:
+        returncode = 0
+        stdout = _BODY
+        stderr = ""
+
+    monkeypatch.setattr(joplin_backend, "find_joplin", lambda _: "joplin")
+    monkeypatch.setattr(joplin_backend.subprocess, "run", lambda *a, **k: Proc())
+    cfg = joplin_backend.BackendConfig(binary="joplin", profile=None)
+    result = joplin_backend.run_joplin_command(["cat", "MyNote"], cfg)
+    assert result["stdout"] == _BODY
 
 
 def test_backend_run_command_timeout(monkeypatch):
@@ -853,6 +901,62 @@ def test_json_envelope_shape():
     assert bad_payload["data"] is None
     assert bad_payload["error"]["type"] == "RuntimeError"
     assert bad_payload["error"]["message"] == "boom"
+
+
+# ---------------------------------------------------------------------------
+# P2 regression: error envelope command ID consistency
+# ---------------------------------------------------------------------------
+
+
+def test_handle_error_command_id_simple_command(monkeypatch):
+    """Single-word subcommand: `notes_list` → `notes.list`."""
+    _mock_ok(monkeypatch)
+    # Force the underlying core to raise so the error path fires.
+    import cli_anything.joplin.core.notes as _note_core
+    monkeypatch.setattr(_note_core, "list_notes", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    result = _json_invoke(monkeypatch, ["--json", "notes", "list"])
+    assert result["ok"] is False
+    assert result["command"] == "notes.list"
+
+
+def test_handle_error_command_id_multi_word_subcommand_config(monkeypatch):
+    """Multi-word subcommand: `config_import_file` must emit `config.import_file`,
+    NOT `config.import.file`."""
+    _mock_ok(monkeypatch)
+    import cli_anything.joplin.core.config as _config_core
+    monkeypatch.setattr(_config_core, "config_import_file", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no file")))
+    result = _json_invoke(monkeypatch, ["--json", "config", "import-file", "settings.json"])
+    assert result["ok"] is False
+    assert result["command"] == "config.import_file", (
+        f"Expected 'config.import_file', got '{result['command']}' — "
+        "handle_error must use replace('_', '.', 1) not replace('_', '.')"
+    )
+
+
+def test_handle_error_command_id_multi_word_subcommand_backend(monkeypatch):
+    """`backend_export_sync_status` must emit `backend.export_sync_status`."""
+    _mock_ok(monkeypatch)
+    import cli_anything.joplin.core.backend as _backend_core
+    monkeypatch.setattr(_backend_core, "export_sync_status", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("err")))
+    result = _json_invoke(monkeypatch, ["--json", "backend", "export-sync-status"])
+    assert result["ok"] is False
+    assert result["command"] == "backend.export_sync_status", (
+        f"Expected 'backend.export_sync_status', got '{result['command']}'"
+    )
+
+
+def test_handle_error_command_id_e2ee_multi_word(monkeypatch):
+    """`e2ee_target_status` → `e2ee.target_status`, `e2ee_decrypt_file` → `e2ee.decrypt_file`."""
+    _mock_ok(monkeypatch)
+    import cli_anything.joplin.core.backend as _backend_core
+
+    monkeypatch.setattr(_backend_core, "e2ee_target_status", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("e2ee err")))
+    r1 = _json_invoke(monkeypatch, ["--json", "e2ee", "target-status", "/some/path"])
+    assert r1["command"] == "e2ee.target_status"
+
+    monkeypatch.setattr(_backend_core, "e2ee_decrypt_file", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("e2ee err")))
+    r2 = _json_invoke(monkeypatch, ["--json", "e2ee", "decrypt-file", "file.bin"])
+    assert r2["command"] == "e2ee.decrypt_file"
 
 
 # ---------------------------------------------------------------------------

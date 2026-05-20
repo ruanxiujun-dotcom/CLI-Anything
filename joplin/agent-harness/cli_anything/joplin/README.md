@@ -109,8 +109,8 @@ CLI_ANYTHING_FORCE_INSTALLED=1 python -m pytest -v -s cli_anything/joplin/tests/
 
 Current validation baseline (Windows + Joplin CLI 3.6.2):
 
-- `python -m pytest -q cli_anything/joplin/tests/test_core.py` â†’ `79 passed, 1 skipped`
-- `python -m pytest -q cli_anything/joplin/tests` â†’ `106 passed, 2 skipped`
+- `python -m pytest -q cli_anything/joplin/tests/test_core.py` â†?`85 passed, 1 skipped`
+- `python -m pytest -q cli_anything/joplin/tests` â†?`112 passed, 2 skipped`
 
 See `cli_anything/joplin/tests/TEST.md` for the full test plan and
 `cli_anything/joplin/WORKFLOWS.md` for the verified workflow inventory.

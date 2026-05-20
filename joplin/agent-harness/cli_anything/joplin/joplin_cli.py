@@ -80,7 +80,7 @@ def handle_error(func):
         try:
             return func(*args, **kwargs)
         except (RuntimeError, ValueError, FileNotFoundError, IndexError) as e:
-            _emit_error(e, command=func.__name__.replace("_", "."))
+            _emit_error(e, command=func.__name__.replace("_", ".", 1))
             if not _repl_mode:
                 sys.exit(1)
     wrapper.__name__ = func.__name__

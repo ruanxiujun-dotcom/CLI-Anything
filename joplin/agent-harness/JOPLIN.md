@@ -125,8 +125,8 @@ For real backend runs, ensure `joplin` is installed and available in `PATH`.
 
 Current validation baseline (Windows + Joplin CLI 3.6.2):
 
-- `python -m pytest -q cli_anything/joplin/tests/test_core.py` â†’ `79 passed, 1 skipped`
-- `python -m pytest -q cli_anything/joplin/tests` â†’ `106 passed, 2 skipped`
+- `python -m pytest -q cli_anything/joplin/tests/test_core.py` â†?`85 passed, 1 skipped`
+- `python -m pytest -q cli_anything/joplin/tests` â†?`112 passed, 2 skipped`
 
 ## Development notes
 
@@ -145,7 +145,7 @@ Current validation baseline (Windows + Joplin CLI 3.6.2):
 - Some Joplin CLI builds reject `search` outside the REPL with
   `"only available in GUI mode"`. The harness surfaces this as a normal
   `ok=false` JSON envelope; agents should treat search as best-effort.
-- Non-ASCII process arguments on Windows pass through `joplin.cmd` â†’ `cmd.exe`,
+- Non-ASCII process arguments on Windows pass through `joplin.cmd` â†?`cmd.exe`,
   which truncates them to the active code page. Harness JSON state handles
   unicode correctly; only argv-forwarded titles are affected. The unicode
   workflow test is skipped on Windows.
