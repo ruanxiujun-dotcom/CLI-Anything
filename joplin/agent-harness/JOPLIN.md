@@ -125,8 +125,8 @@ For real backend runs, ensure `joplin` is installed and available in `PATH`.
 
 Current validation baseline (Windows + Joplin CLI 3.6.2):
 
-- `python -m pytest -q cli_anything/joplin/tests/test_core.py` ? `96 passed`
-- `python -m pytest -q cli_anything/joplin/tests` ? `123 passed, 1 skipped`
+- `python -m pytest -q cli_anything/joplin/tests/test_core.py` -> `104 passed`
+- `python -m pytest -q cli_anything/joplin/tests` -> `131 passed, 1 skipped`
 
 ## Development notes
 
@@ -162,3 +162,11 @@ Current validation baseline (Windows + Joplin CLI 3.6.2):
   a clear `RuntimeError` rather than letting a "permanent" delete fall
   through to a soft trash move. The flag is forwarded as the long-form
   `--permanent` (and `--force` for force), never the short `-p` / `-f`.
+- `server start --exit-early` / `--quiet` and `e2ee decrypt --force` are
+  gated by the same `joplin help <command>` probe (see
+  `_cli_supports_flag` in `core/backend.py`). They are real options of
+  Joplin 3.x, but the same "silently ignored unknown option" behaviour
+  means dropping them on older builds would either hang the harness on
+  the server foreground loop or deadlock e2ee on an interactive
+  master-password prompt. The probe raises a clear, actionable error in
+  those cases.

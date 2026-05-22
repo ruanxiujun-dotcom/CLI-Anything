@@ -33,7 +33,7 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
 <a href="https://github.com/HKUDS/.github/blob/main/profile/README.md"><img src="https://img.shields.io/badge/WeChat-Group-C5EAB4?style=flat&logo=wechat&logoColor=white" alt="WeChat"></a>
 </p>
 
-**One Command Line**: Make any software agent-ready for Pi, OpenClaw, nanobot, Cursor, Claude Code, etc.&nbsp;&nbsp;[**??文文??**](README_CN.md) | [**日本語ド??ュメント**](README_JA.md)
+**One Command Line**: Make any software agent-ready for Pi, OpenClaw, nanobot, Cursor, Claude Code, etc.&nbsp;&nbsp;[**????????**](README_CN.md) | [**????Z?????????**](README_JA.md)
 
 <p align="center">
   <img src="assets/cli-typing.gif" alt="CLI-Anything typing demo" width="800">
@@ -1162,9 +1162,9 @@ nsight-graphics 51 passed ??   (46 unit/CLI + 5 local e2e)
 unrealinsights 50 passed  ??   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 cloudanalyzer  14 passed  ??   (7 unit + 7 e2e)
 3mf            50 passed  ??   (50 unit)
-joplin        123 passed  ??   (96 unit + 27 e2e, 1 skipped on Windows)
-──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,453 passed  ??   100% pass rate
+joplin        131 passed  ??   (104 unit + 27 e2e, 1 skipped on Windows)
+????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+TOTAL        2,461 passed  ??   100% pass rate
 ```
 
 ---
@@ -1193,65 +1193,65 @@ TOTAL        2,453 passed  ??   100% pass rate
 
 ```
 cli-anything/
-├── ? README.md                          # You are here
-├── ? assets/                            # Images and media
-??   ├── icon.png                          # Project icon
-??   └── teaser.png                        # Teaser figure
+?????? ? README.md                          # You are here
+?????? ? assets/                            # Images and media
+??   ?????? icon.png                          # Project icon
+??   ?????? teaser.png                        # Teaser figure
 ??
-├── ? cli-anything-plugin/               # The Claude Code plugin
-??   ├── HARNESS.md                        # Methodology SOP (source of truth)
-??   ├── README.md                         # Plugin documentation
-??   ├── QUICKSTART.md                     # 5-minute getting started
-??   ├── PUBLISHING.md                     # Distribution guide
-??   ├── repl_skin.py                      # Unified REPL interface
-??   ├── commands/                         # Plugin command definitions
-??   ??   ├── cli-anything.md               # Main build command
-??   ??   ├── refine.md                     # Expand existing harness coverage
-??   ??   ├── test.md                       # Test runner
-??   ??   └── validate.md                   # Standards validation
-??   └── scripts/
-??       └── setup-cli-anything.sh         # Setup script
+?????? ? cli-anything-plugin/               # The Claude Code plugin
+??   ?????? HARNESS.md                        # Methodology SOP (source of truth)
+??   ?????? README.md                         # Plugin documentation
+??   ?????? QUICKSTART.md                     # 5-minute getting started
+??   ?????? PUBLISHING.md                     # Distribution guide
+??   ?????? repl_skin.py                      # Unified REPL interface
+??   ?????? commands/                         # Plugin command definitions
+??   ??   ?????? cli-anything.md               # Main build command
+??   ??   ?????? refine.md                     # Expand existing harness coverage
+??   ??   ?????? test.md                       # Test runner
+??   ??   ?????? validate.md                   # Standards validation
+??   ?????? scripts/
+??       ?????? setup-cli-anything.sh         # Setup script
 ??
-├── ??? codex-skill/                      # Codex skill entry point
-├── ? gimp/agent-harness/               # GIMP CLI (107 tests)
-├── ??? blender/agent-harness/            # Blender CLI (208 tests)
-├── ?? inkscape/agent-harness/            # Inkscape CLI (202 tests)
-├── ? audacity/agent-harness/           # Audacity CLI (161 tests)
-├── ? browser/agent-harness/            # Browser CLI (DOMShell MCP, new)
-├── ? libreoffice/agent-harness/        # LibreOffice CLI (158 tests)
-├── ? mailchimp/agent-harness/          # Mailchimp Marketing API CLI (303 commands, 36 unit tests)
-├── ? zotero/agent-harness/             # Zotero CLI (new, write import support)
-├── ? joplin/agent-harness/             # Joplin CLI (118 tests, new)
-├── ? calibre/agent-harness/            # Calibre CLI (58 tests: 38 unit + 20 E2E)
-├── ? mubu/agent-harness/               # Mubu CLI (96 tests)
-├── ? obs-studio/agent-harness/         # OBS Studio CLI (153 tests)
-├── ? nslogger/agent-harness/           # NSLogger CLI (139 tests)
-├── ??? kdenlive/agent-harness/           # Kdenlive CLI (155 tests)
-├── ? shotcut/agent-harness/            # Shotcut CLI (154 tests)
-├── ? zoom/agent-harness/               # Zoom CLI (22 tests)
-├── ? musescore/agent-harness/          # MuseScore CLI (56 tests)
-├── ? drawio/agent-harness/             # Draw.io CLI (138 tests)
-├── ?? eth2-quickstart/agent-harness/    # ETH2 QuickStart CLI (18 unit, 3 e2e skipped)
-├── ??? mermaid/agent-harness/            # Mermaid Live Editor CLI (10 tests)
-├── ?? anygen/agent-harness/             # AnyGen CLI (50 tests)
-├── ??? comfyui/agent-harness/            # ComfyUI CLI (70 tests)
-├── ??? notebooklm/agent-harness/         # NotebookLM CLI (experimental, 21 tests)
-├── ? dify-workflow/agent-harness/      # Dify Workflow CLI wrapper (11 tests)
-├── ??? adguardhome/agent-harness/       # AdGuard Home CLI (36 tests)
-├── ??? ollama/agent-harness/             # Ollama CLI (98 tests)
-├── ? godot/agent-harness/              # Godot Engine CLI (24 tests)
-├── ? sbox/agent-harness/               # s&box CLI (244 tests: 157 unit + 17 orchestrator + 50 e2e + 20 exit-code)
-├── ? sketch/agent-harness/             # Sketch CLI (19 tests, Node.js)
-├── ? renderdoc/agent-harness/          # RenderDoc CLI (59 tests)
-├── ? nsight-graphics/agent-harness/    # Nsight Graphics CLI (51 tests)
-├── ? lldb/agent-harness/               # LLDB CLI (27 tests)
-├── ? unrealinsights/agent-harness/     # Unreal Insights CLI (50 tests)
-├── ? videocaptioner/agent-harness/     # VideoCaptioner CLI (26 tests)
-├── ? openscreen/agent-harness/         # Openscreen CLI ?? screen recording editor (101 tests)
-├── ?? cloudcompare/agent-harness/       # CloudCompare CLI (88 tests)
-├── ? exa/agent-harness/               # Exa CLI (40 tests)
-└── ?? cloudanalyzer/agent-harness/      # CloudAnalyzer CLI (14 tests)
-└── ? 3MF/agent-harness/               # 3MF Mesh Editor CLI (50+ tests)
+?????? ??? codex-skill/                      # Codex skill entry point
+?????? ? gimp/agent-harness/               # GIMP CLI (107 tests)
+?????? ??? blender/agent-harness/            # Blender CLI (208 tests)
+?????? ?? inkscape/agent-harness/            # Inkscape CLI (202 tests)
+?????? ? audacity/agent-harness/           # Audacity CLI (161 tests)
+?????? ? browser/agent-harness/            # Browser CLI (DOMShell MCP, new)
+?????? ? libreoffice/agent-harness/        # LibreOffice CLI (158 tests)
+?????? ? mailchimp/agent-harness/          # Mailchimp Marketing API CLI (303 commands, 36 unit tests)
+?????? ? zotero/agent-harness/             # Zotero CLI (new, write import support)
+?????? ? joplin/agent-harness/             # Joplin CLI (118 tests, new)
+?????? ? calibre/agent-harness/            # Calibre CLI (58 tests: 38 unit + 20 E2E)
+?????? ? mubu/agent-harness/               # Mubu CLI (96 tests)
+?????? ? obs-studio/agent-harness/         # OBS Studio CLI (153 tests)
+?????? ? nslogger/agent-harness/           # NSLogger CLI (139 tests)
+?????? ??? kdenlive/agent-harness/           # Kdenlive CLI (155 tests)
+?????? ? shotcut/agent-harness/            # Shotcut CLI (154 tests)
+?????? ? zoom/agent-harness/               # Zoom CLI (22 tests)
+?????? ? musescore/agent-harness/          # MuseScore CLI (56 tests)
+?????? ? drawio/agent-harness/             # Draw.io CLI (138 tests)
+?????? ?? eth2-quickstart/agent-harness/    # ETH2 QuickStart CLI (18 unit, 3 e2e skipped)
+?????? ??? mermaid/agent-harness/            # Mermaid Live Editor CLI (10 tests)
+?????? ?? anygen/agent-harness/             # AnyGen CLI (50 tests)
+?????? ??? comfyui/agent-harness/            # ComfyUI CLI (70 tests)
+?????? ??? notebooklm/agent-harness/         # NotebookLM CLI (experimental, 21 tests)
+?????? ? dify-workflow/agent-harness/      # Dify Workflow CLI wrapper (11 tests)
+?????? ??? adguardhome/agent-harness/       # AdGuard Home CLI (36 tests)
+?????? ??? ollama/agent-harness/             # Ollama CLI (98 tests)
+?????? ? godot/agent-harness/              # Godot Engine CLI (24 tests)
+?????? ? sbox/agent-harness/               # s&box CLI (244 tests: 157 unit + 17 orchestrator + 50 e2e + 20 exit-code)
+?????? ? sketch/agent-harness/             # Sketch CLI (19 tests, Node.js)
+?????? ? renderdoc/agent-harness/          # RenderDoc CLI (59 tests)
+?????? ? nsight-graphics/agent-harness/    # Nsight Graphics CLI (51 tests)
+?????? ? lldb/agent-harness/               # LLDB CLI (27 tests)
+?????? ? unrealinsights/agent-harness/     # Unreal Insights CLI (50 tests)
+?????? ? videocaptioner/agent-harness/     # VideoCaptioner CLI (26 tests)
+?????? ? openscreen/agent-harness/         # Openscreen CLI ?? screen recording editor (101 tests)
+?????? ?? cloudcompare/agent-harness/       # CloudCompare CLI (88 tests)
+?????? ? exa/agent-harness/               # Exa CLI (40 tests)
+?????? ?? cloudanalyzer/agent-harness/      # CloudAnalyzer CLI (14 tests)
+?????? ? 3MF/agent-harness/               # 3MF Mesh Editor CLI (50+ tests)
 ```
 
 Each `agent-harness/` contains an installable Python package under `cli_anything.<software>/` with Click CLI, core modules, utils (including `repl_skin.py` and backend wrapper), and comprehensive tests.
@@ -1305,7 +1305,7 @@ $ cli-anything-libreoffice --project report.json writer add-heading -t "Q1 Repor
 ?? Added heading: "Q1 Report"
 
 $ cli-anything-libreoffice --project report.json writer add-table --rows 4 --cols 3
-?? Added 4×3 table
+?? Added 4??3 table
 
 # Export to real PDF via LibreOffice headless
 $ cli-anything-libreoffice --project report.json export render output.pdf -p pdf --overwrite
@@ -1326,10 +1326,10 @@ $ cli-anything-libreoffice --json document info --project report.json
 
 ```
 $ cli-anything-blender
-╔══════════════════════════════════════════╗
+?X?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?[
 ??       cli-anything-blender v1.0.0       ??
 ??     Blender CLI for AI Agents           ??
-╚══════════════════════════════════════════╝
+?^?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?T?a
 
 blender> scene new --name ProductShot
 ?? Created scene: ProductShot
@@ -1338,7 +1338,7 @@ blender[ProductShot]> object add-mesh --type cube --location 0 0 1
 ?? Added mesh: Cube at (0, 0, 1)
 
 blender[ProductShot]*> render execute --output render.png --engine CYCLES
-?? Rendered: render.png (1920×1080, 2.3 MB) via blender --background
+?? Rendered: render.png (1920??1080, 2.3 MB) via blender --background
 
 blender[ProductShot]> exit
 Goodbye! ?
@@ -1361,7 +1361,7 @@ The playbook distills key insights from successfully building all 18 diverse, pr
 | **Use the real software** | The CLI MUST call the actual application for rendering. No Pillow replacements for GIMP, no custom renderers for Blender. Generate valid project files ?? invoke the real backend. |
 | **The Rendering Gap** | GUI apps apply effects at render time. If your CLI manipulates project files but uses a naive export tool, effects get silently dropped. Solution: native renderer ?? filter translation ?? render script. |
 | **Filter Translation** | When mapping effects between formats (MLT ?? ffmpeg), watch for duplicate filter merging, interleaved stream ordering, parameter space differences, and unmappable effects. |
-| **Timecode Precision** | Non-integer frame rates (29.97fps) cause cumulative rounding. Use `round()` not `int()`, integer arithmetic for display, and ±1 frame tolerance in tests. |
+| **Timecode Precision** | Non-integer frame rates (29.97fps) cause cumulative rounding. Use `round()` not `int()`, integer arithmetic for display, and ??1 frame tolerance in tests. |
 | **Output Verification** | Never trust that export worked because it exited 0. Verify: magic bytes, ZIP/OOXML structure, pixel analysis, audio RMS levels, duration checks. |
 
 > See the full methodology: [`cli-anything-plugin/HARNESS.md`](cli-anything-plugin/HARNESS.md)

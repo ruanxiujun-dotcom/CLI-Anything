@@ -6,6 +6,35 @@ from pathlib import Path
 from cli_anything.joplin.utils.joplin_backend import BackendConfig, find_joplin, run_joplin_command, run_joplin_json
 
 
+# Cache `joplin help <command>` flag-support lookups per (binary, command, flag).
+# Joplin's CLI silently ignores unknown options instead of erroring, so we must
+# probe `help` before sending optional flags whose support varies by version
+# (`server start --exit-early/--quiet`, `e2ee decrypt --force`). Without this,
+# an older Joplin would no-op the request while still reporting success.
+_FLAG_SUPPORT_CACHE: dict[str, bool] = {}
+
+
+def _cli_supports_flag(config: BackendConfig, command_name: str, flag: str) -> bool:
+    """Return True iff `joplin help <command_name>` advertises ``flag``.
+
+    Probes are cached per (binary, command, flag) so a workflow that issues
+    many e.g. permanent deletes only spawns one help subprocess. Any failure
+    of the probe itself (network, missing binary, ...) is treated as "flag
+    not supported" so callers raise a clear error instead of silently
+    sending an unknown option.
+    """
+    key = f"{config.binary or 'joplin'}:{command_name}:{flag}"
+    if key in _FLAG_SUPPORT_CACHE:
+        return _FLAG_SUPPORT_CACHE[key]
+    try:
+        result = run_joplin_command(["help", command_name], config, timeout=30)
+        supported = flag in (result.get("stdout") or "")
+    except Exception:
+        supported = False
+    _FLAG_SUPPORT_CACHE[key] = supported
+    return supported
+
+
 def _npm_global_root() -> Path | None:
     """Best-effort lookup of npm's global ``node_modules`` directory.
 
@@ -150,10 +179,33 @@ def server_status(config: BackendConfig) -> dict:
 
 
 def server_start(config: BackendConfig, exit_early: bool = True, quiet: bool = False) -> dict:
+    """Start Joplin's API server.
+
+    ``--exit-early`` and ``--quiet`` are both documented options of
+    ``joplin server`` (see ``command-server.js`` in Joplin 3.x), but Joplin
+    silently ignores unknown options on older builds. Because the default
+    workflow relies on ``--exit-early`` to return promptly, we probe
+    ``joplin help server`` first and refuse with a clear error rather than
+    block forever on a build that omits the flag.
+    """
     args = ["server", "start"]
     if exit_early:
+        if not _cli_supports_flag(config, "server", "--exit-early"):
+            raise RuntimeError(
+                "Joplin CLI `server start` does not advertise `--exit-early` "
+                "(documented since Joplin 3.x). Refusing to send the flag "
+                "because Joplin would silently ignore it and the harness "
+                "would then block forever waiting for the server process to "
+                "exit. Upgrade Joplin, or call `server_start(exit_early=False)` "
+                "to run in foreground (`--wait`) mode."
+            )
         args.append("--exit-early")
     if quiet:
+        if not _cli_supports_flag(config, "server", "--quiet"):
+            raise RuntimeError(
+                "Joplin CLI `server start` does not advertise `--quiet` on "
+                "this build. Omit `quiet=True` or upgrade Joplin."
+            )
         args.append("--quiet")
     # When exit_early is True the CLI returns as soon as the server is up
     # (~5 s), so a 300 s safety cap is reasonable.  When exit_early is False
@@ -185,12 +237,30 @@ def e2ee_decrypt(
     retry_failed_items: bool = False,
     force: bool = False,
 ) -> dict:
+    """Decrypt E2EE-encrypted items / a string.
+
+    ``--force`` ("do not ask for input on failure") is a documented option of
+    ``joplin e2ee`` (see ``command-e2ee.js`` -- it's also referenced via
+    ``args.options.force`` inside the action). It is essential for the
+    non-interactive workflow, since without it Joplin prompts on the TTY for
+    a master password and the harness subprocess would hang. As with
+    ``server start``, we probe ``joplin help e2ee`` to make sure the
+    installed build advertises the flag, since unknown options are silently
+    ignored by Joplin.
+    """
     args = ["e2ee", "decrypt"]
     if encrypted_text:
         args.append(encrypted_text)
     if retry_failed_items:
         args.append("--retry-failed-items")
     if force:
+        if not _cli_supports_flag(config, "e2ee", "--force"):
+            raise RuntimeError(
+                "Joplin CLI `e2ee decrypt` does not advertise `--force` on "
+                "this build. Refusing to send the flag because Joplin would "
+                "silently ignore it and could then block on an interactive "
+                "master-password prompt. Omit `force=True` or upgrade Joplin."
+            )
         args.append("--force")
     return run_joplin_command(args, config, timeout=600)
 

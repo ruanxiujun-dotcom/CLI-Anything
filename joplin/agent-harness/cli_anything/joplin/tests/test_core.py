@@ -193,6 +193,67 @@ def test_session_save_creates_missing_parent_directories(tmp_path):
     assert nested.parent.is_dir()
 
 
+def test_session_save_real_lock_held_then_released(tmp_path):
+    """The exclusive lock must be acquired and released correctly for a
+    normal single-process save, so that a subsequent save on the same path
+    can acquire it again without blocking."""
+    project_path = tmp_path / "project.json"
+    sess = Session()
+    sess.set_project(project_mod.create_project(name="lock-test"), str(project_path))
+    sess.save_session()
+
+    # A second save on the same path must succeed (lock was released by the
+    # first save). If _locked_save_json fails to release, this deadlocks or
+    # raises, failing the test.
+    sess.snapshot("change")
+    sess.save_session()
+    assert project_path.exists()
+
+
+def test_session_save_lock_prevents_tmp_collision(tmp_path):
+    """Two threads calling _locked_save_json on the same path concurrently
+    must each write their own data atomically -- neither write should be lost
+    and the file must remain valid JSON after both finish."""
+    import threading
+
+    project_path = tmp_path / "shared.json"
+
+    # Pre-create the file so both threads are working on an existing path.
+    sess0 = Session()
+    sess0.set_project(project_mod.create_project(name="init"), str(project_path))
+    sess0.save_session()
+
+    errors: list[Exception] = []
+    results: list[str] = []
+
+    def writer(name: str) -> None:
+        try:
+            sess = Session()
+            proj = project_mod.create_project(name=name)
+            sess.set_project(proj, str(project_path))
+            # Each writer saves from a snapshot so _modified is True.
+            sess.snapshot(f"writer {name}")
+            sess.save_session()
+            results.append(name)
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=writer, args=(f"writer-{i}",)) for i in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert not errors, f"Concurrent saves raised: {errors}"
+    assert len(results) == 4, f"Not all writers completed: {results}"
+
+    # The file must still be valid JSON after all concurrent writes.
+    with open(project_path, encoding="utf-8") as fh:
+        content = json.load(fh)
+    assert isinstance(content, dict)
+    assert "name" in content
+
+
 def test_session_set_project_clears_undo_redo():
     sess = Session()
     sess.set_project(project_mod.create_project(name="a"))
@@ -484,25 +545,31 @@ def test_backend_run_command_timeout(monkeypatch):
     assert "timed out" in str(excinfo.value)
 
 
+def _server_help_supporting_all_flags():
+    return (
+        "server <command>\n"
+        "    --exit-early  Allow the command to exit while the server is still running...\n"
+        "    --quiet       Log less information to the console...\n"
+    )
+
+
 def test_backend_server_start_exit_early_uses_finite_timeout(monkeypatch):
     """P2 regression: server_start(exit_early=True) must pass a finite timeout."""
     captured = {}
 
-    class Proc:
-        returncode = 0
-        stdout = "Server started"
-        stderr = ""
+    def fake(args, cfg, timeout=120):
+        if args[:1] == ["help"]:
+            return {"command": args, "returncode": 0, "stdout": _server_help_supporting_all_flags(), "stderr": ""}
+        captured["args"] = args
+        captured["timeout"] = timeout
+        return {"command": args, "returncode": 0, "stdout": "", "stderr": ""}
 
-    def fake_run(cmd, *a, **k):
-        captured["timeout"] = k.get("timeout")
-        return Proc()
-
+    backend_core._FLAG_SUPPORT_CACHE.clear()
     monkeypatch.setattr(backend_core, "find_joplin", lambda _: "joplin")
-    monkeypatch.setattr(backend_core, "run_joplin_command",
-                        lambda args, cfg, timeout=120: captured.update({"timeout": timeout}) or
-                        {"command": args, "returncode": 0, "stdout": "", "stderr": ""})
+    monkeypatch.setattr(backend_core, "run_joplin_command", fake)
     cfg = joplin_backend.BackendConfig()
     backend_core.server_start(cfg, exit_early=True)
+    assert captured["args"] == ["server", "start", "--exit-early"]
     assert captured["timeout"] is not None
     assert captured["timeout"] > 0
 
@@ -512,14 +579,145 @@ def test_backend_server_start_no_exit_early_uses_no_timeout(monkeypatch):
     a long-lived server process is never killed by a hard deadline."""
     captured = {}
 
-    monkeypatch.setattr(backend_core, "run_joplin_command",
-                        lambda args, cfg, timeout=120: captured.update({"timeout": timeout}) or
-                        {"command": args, "returncode": 0, "stdout": "", "stderr": ""})
+    def fake(args, cfg, timeout=120):
+        # exit_early=False must NOT probe (no flag to gate)
+        if args[:1] == ["help"]:
+            captured.setdefault("help_called", True)
+        captured["args"] = args
+        captured["timeout"] = timeout
+        return {"command": args, "returncode": 0, "stdout": "", "stderr": ""}
+
+    backend_core._FLAG_SUPPORT_CACHE.clear()
+    monkeypatch.setattr(backend_core, "run_joplin_command", fake)
     cfg = joplin_backend.BackendConfig()
     backend_core.server_start(cfg, exit_early=False)
+    assert captured["args"] == ["server", "start"]
     assert captured["timeout"] is None, (
         f"Expected timeout=None for --wait mode, got {captured['timeout']}"
     )
+    assert "help_called" not in captured, "Should not probe help when no flag is needed"
+
+
+def test_backend_server_start_refuses_when_exit_early_unsupported(monkeypatch):
+    """Regression: on older Joplin builds that don't advertise --exit-early,
+    refuse rather than silently send a flag Joplin would ignore (which would
+    leave the harness blocked forever waiting for the foreground server)."""
+    sent = []
+
+    def fake(args, cfg, timeout=120):
+        if args[:1] == ["help"]:
+            # Old Joplin: usage only, no flags listed.
+            return {"command": args, "returncode": 0, "stdout": "server <command>\n", "stderr": ""}
+        sent.append(args)
+        return {"command": args, "returncode": 0, "stdout": "", "stderr": ""}
+
+    backend_core._FLAG_SUPPORT_CACHE.clear()
+    monkeypatch.setattr(backend_core, "run_joplin_command", fake)
+    cfg = joplin_backend.BackendConfig()
+    with pytest.raises(RuntimeError) as excinfo:
+        backend_core.server_start(cfg, exit_early=True)
+    assert "--exit-early" in str(excinfo.value)
+    assert "exit_early=False" in str(excinfo.value)
+    assert sent == [], "Server start command must not be sent when probe fails"
+
+
+def test_backend_server_start_refuses_when_quiet_unsupported(monkeypatch):
+    """Same defensive check for --quiet."""
+    sent = []
+
+    def fake(args, cfg, timeout=120):
+        if args[:1] == ["help"]:
+            # Build that has --exit-early but not --quiet.
+            return {"command": args, "returncode": 0, "stdout": "server\n    --exit-early ...\n", "stderr": ""}
+        sent.append(args)
+        return {"command": args, "returncode": 0, "stdout": "", "stderr": ""}
+
+    backend_core._FLAG_SUPPORT_CACHE.clear()
+    monkeypatch.setattr(backend_core, "run_joplin_command", fake)
+    cfg = joplin_backend.BackendConfig()
+    with pytest.raises(RuntimeError) as excinfo:
+        backend_core.server_start(cfg, exit_early=True, quiet=True)
+    assert "--quiet" in str(excinfo.value)
+    assert sent == []
+
+
+def test_backend_server_start_probe_cached_across_calls(monkeypatch):
+    """The help probe must be cached per (binary, command, flag) so repeated
+    server_start calls don't pay a subprocess cost each time."""
+    help_calls = 0
+    started = 0
+
+    def fake(args, cfg, timeout=120):
+        nonlocal help_calls, started
+        if args[:1] == ["help"]:
+            help_calls += 1
+            return {"command": args, "returncode": 0, "stdout": _server_help_supporting_all_flags(), "stderr": ""}
+        started += 1
+        return {"command": args, "returncode": 0, "stdout": "", "stderr": ""}
+
+    backend_core._FLAG_SUPPORT_CACHE.clear()
+    monkeypatch.setattr(backend_core, "run_joplin_command", fake)
+    cfg = joplin_backend.BackendConfig()
+    for _ in range(3):
+        backend_core.server_start(cfg, exit_early=True, quiet=True)
+    # Two distinct flags (--exit-early, --quiet) => one probe each, both cached.
+    assert help_calls == 2, f"expected 2 help probes total, got {help_calls}"
+    assert started == 3
+
+
+def test_backend_e2ee_decrypt_force_supported(monkeypatch):
+    """When `joplin help e2ee` advertises -f, --force we send the long form."""
+    captured = {}
+
+    def fake(args, cfg, timeout=120):
+        if args[:1] == ["help"]:
+            return {"command": args, "returncode": 0,
+                    "stdout": "e2ee\n    -f, --force  Do not ask for input on failure\n", "stderr": ""}
+        captured["args"] = args
+        return {"command": args, "returncode": 0, "stdout": "", "stderr": ""}
+
+    backend_core._FLAG_SUPPORT_CACHE.clear()
+    monkeypatch.setattr(backend_core, "run_joplin_command", fake)
+    cfg = joplin_backend.BackendConfig()
+    backend_core.e2ee_decrypt(cfg, force=True)
+    assert captured["args"] == ["e2ee", "decrypt", "--force"]
+
+
+def test_backend_e2ee_decrypt_force_refuses_when_unsupported(monkeypatch):
+    """On builds that don't advertise --force, refuse rather than silently
+    let the e2ee subprocess deadlock on an interactive master-password prompt."""
+    sent = []
+
+    def fake(args, cfg, timeout=120):
+        if args[:1] == ["help"]:
+            return {"command": args, "returncode": 0,
+                    "stdout": "e2ee\n    -p, --password ...\n    -v, --verbose ...\n", "stderr": ""}
+        sent.append(args)
+        return {"command": args, "returncode": 0, "stdout": "", "stderr": ""}
+
+    backend_core._FLAG_SUPPORT_CACHE.clear()
+    monkeypatch.setattr(backend_core, "run_joplin_command", fake)
+    cfg = joplin_backend.BackendConfig()
+    with pytest.raises(RuntimeError) as excinfo:
+        backend_core.e2ee_decrypt(cfg, force=True)
+    assert "--force" in str(excinfo.value)
+    assert "interactive" in str(excinfo.value).lower() or "prompt" in str(excinfo.value).lower()
+    assert sent == []
+
+
+def test_backend_e2ee_decrypt_no_force_skips_probe(monkeypatch):
+    """force=False is the default; we must not probe help in the default path."""
+    seen = []
+
+    def fake(args, cfg, timeout=120):
+        seen.append(args)
+        return {"command": args, "returncode": 0, "stdout": "", "stderr": ""}
+
+    backend_core._FLAG_SUPPORT_CACHE.clear()
+    monkeypatch.setattr(backend_core, "run_joplin_command", fake)
+    cfg = joplin_backend.BackendConfig()
+    backend_core.e2ee_decrypt(cfg, encrypted_text="abc", retry_failed_items=True)
+    assert seen == [["e2ee", "decrypt", "abc", "--retry-failed-items"]]
 
 
 def test_backend_run_json_parse(monkeypatch):
@@ -851,12 +1049,25 @@ def test_tags_tagnotes_uses_tag_list(monkeypatch):
 
 
 def test_sync_import_config_and_backend_args(monkeypatch):
+    # Non-help command invocations only; help probes are responded to inline
+    # so they don't pollute the parity assertions below.
     captured = []
 
     def fake_command(args, cfg, timeout=120):
+        if args[:1] == ["help"]:
+            # Respond as if the modern Joplin CLI: advertise every flag we
+            # may probe so server_start/e2ee_decrypt don't refuse.
+            if args == ["help", "server"]:
+                stdout = "server\n    --exit-early ...\n    --quiet ...\n"
+            elif args == ["help", "e2ee"]:
+                stdout = "e2ee\n    -f, --force ...\n"
+            else:
+                stdout = ""
+            return {"command": args, "returncode": 0, "stdout": stdout, "stderr": ""}
         captured.append(args)
         return {"returncode": 0}
 
+    backend_core._FLAG_SUPPORT_CACHE.clear()
     monkeypatch.setattr(sync_core, "run_joplin_command", fake_command)
     monkeypatch.setattr(interop_core, "run_joplin_command", fake_command)
     monkeypatch.setattr(config_core, "run_joplin_command", fake_command)

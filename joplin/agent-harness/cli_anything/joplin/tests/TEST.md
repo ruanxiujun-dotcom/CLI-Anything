@@ -8,7 +8,7 @@ The suite has two files:
 
 Real-backend classes are skipped automatically when `joplin` is not on `PATH`.
 
-## test_core.py (96 tests)
+## test_core.py (104 tests)
 
 Pure Python tests covering the harness surface. Safe to run anywhere without
 a Joplin backend.
@@ -20,6 +20,12 @@ Coverage areas:
   redo cleared on new snapshot, save/save-without-path, `mark_dirty`
 - Session save regression: nested project path auto-creates missing parent
   directories before lock/write
+- Session file locking: `_locked_save_json` acquires a real cross-process
+  exclusive lock (`fcntl.flock` on POSIX, `msvcrt.locking` with back-off
+  on Windows) so concurrent agent workers cannot race on the shared `.tmp`
+  file. Tests verify: lock is acquired and released on a single save (so
+  a subsequent save can proceed), and four concurrent threads writing to
+  the same file all complete successfully with the file remaining valid JSON
 - Backend runner: `find_joplin`, profile/no-profile invocation, error path,
   benign Node warning handling (scrubbed copy used only for the non-zero exit
   decision; returned `stdout`/`stderr` stay verbatim), mixed warning+real-error
@@ -51,6 +57,19 @@ Coverage areas:
   no probe when `permanent=False`, clear RuntimeError on unsupported CLI,
   cached probe (one help call across N permanent deletes), and the
   notebooks variant of the same guard
+- `server start --exit-early/--quiet` guard and `e2ee decrypt --force`
+  guard: same defensive pattern via a generalised
+  `_cli_supports_flag(config, command, flag)` helper with a
+  per-(binary, command, flag) cache.  `server start(exit_early=True)`
+  refuses with an actionable error suggesting `exit_early=False`
+  (`--wait` mode) on builds that omit `--exit-early`, because Joplin
+  would otherwise silently ignore the flag and the harness subprocess
+  would block forever.  `e2ee decrypt(force=True)` refuses on builds
+  without `--force` to avoid deadlocking on an interactive master-
+  password prompt.  Tests cover: long-form forwarded when supported,
+  no probe when the flag was not requested, refusal on unsupported
+  builds (server / quiet / e2ee), and that the probe is cached so N
+  starts only emit help once per distinct flag
 - JSON envelope shape (success + error)
 - JSON contract per command group: notebooks, notes, todos, tags, search,
   sync, interop, config, session, attach, status, backend, server, e2ee
@@ -182,3 +201,10 @@ CLI_ANYTHING_FORCE_INSTALLED=1 python -m pytest -v -s cli_anything/joplin/tests/
   the flag (Joplin terminal CLI >= 3.0). On older Joplin builds the harness
   raises `RuntimeError` rather than silently letting the delete go to the
   trash. Omit `--permanent` to use a soft delete on any version.
+- `server start --exit-early`, `server start --quiet`, and `e2ee decrypt
+  --force` are also gated through a `joplin help <command>` probe. They
+  are real options of Joplin terminal CLI 3.x (see `command-server.js` and
+  `command-e2ee.js`), but Joplin silently ignores unknown options, so the
+  harness refuses to send them on older builds and surfaces a clear error
+  instead of either blocking forever (server) or hanging on an interactive
+  master-password prompt (e2ee).

@@ -131,3 +131,13 @@ tag.add, tag.remove, attach.add, interop.export, note.remove, notebook.remove
   `--force`); the short `-p` is intentionally avoided since Joplin uses
   `-p` for `--parent` in `mkbook` and `--permanent` only became available
   in 3.x.
+- `server start --exit-early` / `--quiet` and `e2ee decrypt --force` are
+  also probe-gated through the shared `_cli_supports_flag` helper in
+  `core/backend.py`. They are documented options of Joplin 3.x
+  (`command-server.js`, `command-e2ee.js`), but because Joplin would
+  silently ignore them on older builds the harness refuses to send them
+  in that case. Without `--exit-early` the harness subprocess would block
+  forever waiting for the foreground server; without `--force`, e2ee
+  decrypt would deadlock on an interactive master-password prompt. The
+  probe is cached per `(binary, command, flag)` so workflows that issue
+  many starts pay one help call per flag.
