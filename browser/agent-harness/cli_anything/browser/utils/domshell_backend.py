@@ -10,10 +10,16 @@ Installation:
 
 DOMShell GitHub: https://github.com/apireno/DOMShell
 Chrome Web Store: https://chromewebstore.google.com/detail/domshell-%E2%80%94-browser-filesy/okcliheamhmijccjknkkplploacoidnp
+
+DOMShell 2.0.0 (May 2026) changed the default MCP tool surface from 38
+per-command tools to a single `domshell_execute` tool that accepts a
+shell-style command string (multi-line supported). This wrapper targets
+that single tool.
 """
 
 import asyncio
 import os
+import shlex
 import subprocess
 import shutil
 from typing import Any, Optional
@@ -78,7 +84,7 @@ def is_available() -> tuple[bool, str]:
 
     Examples:
         >>> is_available()
-        (True, "DOMShell v1.0.0 is available")
+        (True, "DOMShell v2.0.0 is available")
         >>> is_available()
         (False, "npx not found. Install Node.js from https://nodejs.org/")
     """
@@ -110,16 +116,17 @@ def is_available() -> tuple[bool, str]:
         return False, f"DOMShell check failed: {e}"
 
 
-async def _call_tool(
-    tool_name: str,
-    arguments: dict,
-    use_daemon: bool = False
-) -> Any:
-    """Call a DOMShell MCP tool.
+def _q(arg: str) -> str:
+    """Quote an argument for the DOMShell command parser (shell-style)."""
+    return shlex.quote(arg)
+
+
+async def _call_execute(command: str, use_daemon: bool = False) -> Any:
+    """Run a DOMShell command via the single `domshell_execute` MCP tool.
 
     Args:
-        tool_name: Name of the MCP tool (e.g., "domshell_ls", "domshell_cd")
-        arguments: Arguments to pass to the tool
+        command: DOMShell command string. May contain newlines for multi-command
+            execution — each line runs in order in the same shell state.
         use_daemon: If True, use persistent daemon connection (if available)
 
     Returns:
@@ -133,9 +140,11 @@ async def _call_tool(
     if use_daemon and _daemon_session is not None:
         # Use persistent daemon connection
         try:
-            result = await _daemon_session.call_tool(tool_name, arguments)
+            result = await _daemon_session.call_tool(
+                "domshell_execute", {"command": command}
+            )
             return result
-        except Exception as e:
+        except Exception:
             # Daemon died, fall back to spawning new server
             await _stop_daemon()
 
@@ -149,7 +158,9 @@ async def _call_tool(
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
-                result = await session.call_tool(tool_name, arguments)
+                result = await session.call_tool(
+                    "domshell_execute", {"command": command}
+                )
                 return result
     except Exception as e:
         raise RuntimeError(
@@ -223,7 +234,11 @@ def daemon_started() -> bool:
     return _daemon_session is not None
 
 
-# ── Sync wrappers for each DOMShell tool ─────────────────────────────
+# ── Sync wrappers for each DOMShell command ──────────────────────────
+#
+# Each wrapper builds a shell-style command string and dispatches to
+# `domshell_execute`. The public Python API is unchanged from the
+# pre-2.0.0 per-tool wrappers.
 
 def ls(path: str = "/", use_daemon: bool = False) -> dict:
     """List directory contents in the accessibility tree.
@@ -239,8 +254,8 @@ def ls(path: str = "/", use_daemon: bool = False) -> dict:
         >>> ls("/")
         {"path": "/", "entries": [{"name": "main", "role": "landmark", ...}]}
     """
-    result = asyncio.run(_call_tool("domshell_ls", {"options": path}, use_daemon))
-    return result
+    command = f"ls {_q(path)}" if path else "ls"
+    return asyncio.run(_call_execute(command, use_daemon))
 
 
 def cd(path: str, use_daemon: bool = False) -> dict:
@@ -257,8 +272,7 @@ def cd(path: str, use_daemon: bool = False) -> dict:
         >>> cd("/main/div[0]")
         {"path": "/main/div[0]", "element": {...}}
     """
-    result = asyncio.run(_call_tool("domshell_cd", {"path": path}, use_daemon))
-    return result
+    return asyncio.run(_call_execute(f"cd {_q(path)}", use_daemon))
 
 
 def cat(path: str, use_daemon: bool = False) -> dict:
@@ -275,17 +289,28 @@ def cat(path: str, use_daemon: bool = False) -> dict:
         >>> cat("/main/button[0]")
         {"name": "Submit", "role": "button", "text": "Submit", ...}
     """
-    result = asyncio.run(_call_tool("domshell_cat", {"name": path}, use_daemon))
-    return result
+    return asyncio.run(_call_execute(f"cat {_q(path)}", use_daemon))
 
 
-def grep(pattern: str, use_daemon: bool = False) -> dict:
-    """Search for pattern in accessibility tree.
+def grep(
+    pattern: str,
+    path: str = "",
+    prev: str = "/",
+    use_daemon: bool = False,
+) -> dict:
+    """Search for pattern in the accessibility tree.
 
-    Searches from the current working directory.
+    When ``path`` is provided and is not ``/``, the search is rooted at that
+    path: ``cd`` into it, ``grep``, then ``cd`` back to ``prev`` — sent as one
+    multi-line ``domshell_execute`` call so all three steps share shell state
+    and complete in a single MCP round-trip.
 
     Args:
         pattern: Text pattern to search for
+        path: Optional path to root the search at. If empty or "/", searches
+            from the server-side current working directory.
+        prev: Path to restore as cwd after the search. Used only when
+            ``path`` is provided. Defaults to "/".
         use_daemon: Use persistent daemon connection if available
 
     Returns:
@@ -294,13 +319,14 @@ def grep(pattern: str, use_daemon: bool = False) -> dict:
     Example:
         >>> grep("Login")
         {"matches": ["/main/button[0]", "/main/link[1]"]}
+        >>> grep("Login", path="/main")
+        {"matches": ["/main/button[0]"]}
     """
-    result = asyncio.run(_call_tool(
-        "domshell_grep",
-        {"pattern": pattern},
-        use_daemon
-    ))
-    return result
+    if path and path != "/":
+        command = f"cd {_q(path)}\ngrep {_q(pattern)}\ncd {_q(prev)}"
+    else:
+        command = f"grep {_q(pattern)}"
+    return asyncio.run(_call_execute(command, use_daemon))
 
 
 def click(path: str, use_daemon: bool = False) -> dict:
@@ -317,8 +343,7 @@ def click(path: str, use_daemon: bool = False) -> dict:
         >>> click("/main/button[0]")
         {"action": "click", "path": "/main/button[0]", "status": "success"}
     """
-    result = asyncio.run(_call_tool("domshell_click", {"name": path}, use_daemon))
-    return result
+    return asyncio.run(_call_execute(f"click {_q(path)}", use_daemon))
 
 
 def open_url(url: str, use_daemon: bool = False) -> dict:
@@ -335,8 +360,7 @@ def open_url(url: str, use_daemon: bool = False) -> dict:
         >>> open_url("https://example.com")
         {"url": "https://example.com", "status": "loaded"}
     """
-    result = asyncio.run(_call_tool("domshell_open", {"url": url}, use_daemon))
-    return result
+    return asyncio.run(_call_execute(f"open {_q(url)}", use_daemon))
 
 
 def reload(use_daemon: bool = False) -> dict:
@@ -348,8 +372,7 @@ def reload(use_daemon: bool = False) -> dict:
     Returns:
         Dict with reload result
     """
-    result = asyncio.run(_call_tool("domshell_reload", {}, use_daemon))
-    return result
+    return asyncio.run(_call_execute("refresh", use_daemon))
 
 
 def back(use_daemon: bool = False) -> dict:
@@ -361,8 +384,7 @@ def back(use_daemon: bool = False) -> dict:
     Returns:
         Dict with navigation result
     """
-    result = asyncio.run(_call_tool("domshell_back", {}, use_daemon))
-    return result
+    return asyncio.run(_call_execute("back", use_daemon))
 
 
 def forward(use_daemon: bool = False) -> dict:
@@ -374,15 +396,15 @@ def forward(use_daemon: bool = False) -> dict:
     Returns:
         Dict with navigation result
     """
-    result = asyncio.run(_call_tool("domshell_forward", {}, use_daemon))
-    return result
+    return asyncio.run(_call_execute("forward", use_daemon))
 
 
 def type_text(path: str, text: str, use_daemon: bool = False) -> dict:
     """Type text into an input element.
 
-    Focuses the element first (via domshell_focus), then types. Both operations
-    run in a single MCP session so that focus state is preserved.
+    Focuses the element and types in a single ``domshell_execute`` call so
+    focus state is guaranteed to be in place when ``type`` runs (one MCP
+    round-trip, atomic).
 
     Args:
         path: Path to input element
@@ -392,23 +414,8 @@ def type_text(path: str, text: str, use_daemon: bool = False) -> dict:
     Returns:
         Dict with action result
     """
-    async def _focus_and_type():
-        global _daemon_session
-        if use_daemon and _daemon_session is not None:
-            await _daemon_session.call_tool("domshell_focus", {"name": path})
-            return await _daemon_session.call_tool("domshell_type", {"text": text})
-
-        server_params = StdioServerParameters(
-            command=DEFAULT_SERVER_CMD,
-            args=_build_server_args()
-        )
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                await session.call_tool("domshell_focus", {"name": path})
-                return await session.call_tool("domshell_type", {"text": text})
-
-    return asyncio.run(_focus_and_type())
+    command = f"focus {_q(path)}\ntype {_q(text)}"
+    return asyncio.run(_call_execute(command, use_daemon))
 
 
 # ── Daemon control functions ───────────────────────────────────────────

@@ -38,29 +38,41 @@ DOMShell is an npm package that exposes Chrome's Accessibility Tree via MCP:
 ### Installation
 
 ```bash
-# Verify DOMShell is available
-npx @apireno/domshell --version
+# Verify DOMShell is available (2.0.0 or newer required)
+npx @apireno/domshell@2.0.0 --version
 
 # Install Chrome extension
 # https://chromewebstore.google.com/detail/domshell
 ```
 
-### MCP Tools
+**Minimum version: `@apireno/domshell@2.0.0`.** DOMShell 2.0.0 (May 2026)
+consolidated the MCP tool surface from 38 per-command tools to a single
+`domshell_execute` tool. The harness targets this consolidated tool, so no
+opt-in `--granular` server flag is required.
 
-DOMShell exposes these MCP tools:
+### MCP Tool
 
-| Tool | Description | CLI Command |
-|------|-------------|-------------|
-| `domshell_ls` | List directory contents | `fs ls` |
-| `domshell_cd` | Change directory | `fs cd` |
-| `domshell_cat` | Read element content | `fs cat` |
-| `domshell_grep` | Search for pattern | `fs grep` |
-| `domshell_click` | Click element | `act click` |
-| `domshell_type` | Type text | `act type` |
-| `domshell_open` | Navigate to URL | `page open` |
-| `domshell_reload` | Reload page | `page reload` |
-| `domshell_back` | Navigate back | `page back` |
-| `domshell_forward` | Navigate forward | `page forward` |
+DOMShell 2.0.0+ exposes a single MCP tool:
+
+| Tool | Description |
+|------|-------------|
+| `domshell_execute` | Runs a shell-style command string. Multi-line input is supported — each line runs in order in the same shell state. |
+
+The harness builds command strings from the public CLI commands:
+
+| CLI Command | Command string sent to `domshell_execute` |
+|-------------|--------------------------------------------|
+| `fs ls <path>` | `ls <path>` |
+| `fs cd <path>` | `cd <path>` |
+| `fs cat <path>` | `cat <path>` |
+| `fs grep <pat>` | `grep <pat>` |
+| `fs grep <pat> <path>` | `cd <path>\ngrep <pat>\ncd <prev>` (single call) |
+| `act click <path>` | `click <path>` |
+| `act type <path> <text>` | `focus <path>\ntype <text>` (single call) |
+| `page open <url>` | `open <url>` |
+| `page reload` | `refresh` |
+| `page back` | `back` |
+| `page forward` | `forward` |
 
 ## Key Design Decisions
 

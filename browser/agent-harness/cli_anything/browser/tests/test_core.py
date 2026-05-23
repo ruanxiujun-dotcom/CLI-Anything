@@ -330,8 +330,8 @@ class TestFsModule:
             mock_cat.assert_called_once_with("/main", use_daemon=False)
 
     def test_grep_elements(self):
-        """Grepping calls backend with pattern."""
-        sess = Session()
+        """Grepping calls backend with pattern and session cwd as path."""
+        sess = Session()  # working_dir defaults to "/"
 
         with patch("cli_anything.browser.core.fs.backend.grep") as mock_grep:
             mock_grep.return_value = {
@@ -340,23 +340,22 @@ class TestFsModule:
 
             result = fs.grep_elements(sess, "Login")
 
-            mock_grep.assert_called_once_with("Login", use_daemon=False)
+            mock_grep.assert_called_once_with(
+                "Login", path="/", prev="/", use_daemon=False
+            )
 
     def test_grep_elements_with_path(self):
-        """Grepping with path cds to that path first, then restores."""
+        """Grepping with an explicit path forwards it to backend.grep."""
         sess = Session()
 
-        with patch("cli_anything.browser.core.fs.backend.grep") as mock_grep, \
-             patch("cli_anything.browser.core.fs.backend.cd") as mock_cd:
+        with patch("cli_anything.browser.core.fs.backend.grep") as mock_grep:
             mock_grep.return_value = {"matches": ["/main/button[0]"]}
-            mock_cd.return_value = {"path": "/main"}
 
             result = fs.grep_elements(sess, "Login", "/main")
 
-            mock_grep.assert_called_once_with("Login", use_daemon=False)
-            assert mock_cd.call_count == 2
-            mock_cd.assert_any_call("/main", use_daemon=False)
-            mock_cd.assert_any_call("/", use_daemon=False)
+            mock_grep.assert_called_once_with(
+                "Login", path="/main", prev="/", use_daemon=False
+            )
 
 
 # ── Daemon Mode Tests ────────────────────────────────────────────
