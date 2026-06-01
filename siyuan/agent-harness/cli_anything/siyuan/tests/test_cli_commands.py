@@ -233,16 +233,13 @@ class TestStatusCommand:
             "version": "3.6.5",
         }
         mock_ctx.client.get_version.return_value = "3.6.5"
-        with (
-            patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx),
-            patch("cli_anything.siyuan.siyuan_cli.get_session") as mock_gs,
-        ):
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
             mock_session = MagicMock()
             mock_session.state.connected = True
             mock_session.state.current_notebook_id = "nb1"
             mock_session.state.current_notebook_name = "工作"
             mock_session.state.current_doc_id = "doc1"
-            mock_gs.return_value = mock_session
+            mock_ctx.session = mock_session
             mock_ctx.current_notebook_id = "nb1"
             mock_ctx.current_notebook_name = "工作"
             mock_ctx.current_doc_id = "doc1"

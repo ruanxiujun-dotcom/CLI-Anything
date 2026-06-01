@@ -73,11 +73,3 @@ class SessionManager:
         if self._dirty:
             self.save()
             self._dirty = False
-
-    def auto_save(func):
-        """Decorator: save session state after one-shot mutations."""
-        def wrapper(self, *args, **kwargs):
-            result = func(self, *args, **kwargs)
-            self.flush()
-            return result
-        return wrapper

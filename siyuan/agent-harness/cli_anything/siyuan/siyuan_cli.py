@@ -8,7 +8,6 @@ import json
 import os
 import shlex
 import sys
-from pathlib import Path
 from typing import Any
 
 import click
@@ -20,7 +19,6 @@ from cli_anything.siyuan.core.client import (
     load_config,
 )
 from cli_anything.siyuan.core.session import SessionManager
-from cli_anything.siyuan.utils.siyuan_backend import check_siyuan_running
 
 
 def _read_stdin() -> str:
@@ -30,6 +28,10 @@ def _read_stdin() -> str:
     Windows), which mangles CJK characters before Python sees them.  Reading
     raw bytes then decoding as UTF-8-sig is the most robust approach.
     """
+    if sys.stdin.isatty():
+        raise click.UsageError(
+            "stdin pipe expected (e.g. echo 'content' | sy block insert --parent pid -)"
+        )
     raw = sys.stdin.buffer.read()
     try:
         return raw.decode('utf-8-sig')
@@ -37,36 +39,15 @@ def _read_stdin() -> str:
         return raw.decode('utf-8-sig', errors='replace')
 
 
-# ── Global state ───────────────────────────────────────────────────────
-
-_config: SiYuanConfig | None = None
-_client: SiYuanClient | None = None
-_session_mgr: SessionManager | None = None
-
-
-def get_client() -> SiYuanClient:
-    global _client, _config
-    if _client is None:
-        _config = load_config()
-        _client = SiYuanClient(_config)
-    return _client
-
-
-def get_session() -> SessionManager:
-    global _session_mgr
-    if _session_mgr is None:
-        _session_mgr = SessionManager()
-        _session_mgr.load()
-    return _session_mgr
-
-
 # ── Click context ─────────────────────────────────────────────────────
 
 class SiYuanContext:
-    def __init__(self, json_output: bool = False):
+    def __init__(self, client: SiYuanClient | None = None,
+                 session: SessionManager | None = None,
+                 json_output: bool = False):
         self.json_output = json_output
-        self.client = get_client()
-        self.session = get_session()
+        self.client = client
+        self.session = session or SessionManager()
 
 
 class _CatchErrors(click.Group):
@@ -102,19 +83,20 @@ def cli(ctx: click.Context, json_output: bool, host: str, port: int,
     Configure connection via ~/.siyuan-cli.json, env vars
     (SIYUAN_HOST, SIYUAN_PORT, SIYUAN_TOKEN), or CLI flags.
     """
-    global _config, _client
-    if host or port or token or config_path:
-        cfg = load_config(config_path or None)
-        _config = SiYuanConfig(
+    session = SessionManager()
+    session.load()
+    cfg = load_config(config_path or None)
+    if host or port or token:
+        cfg = SiYuanConfig(
             host=host or cfg.host,
             port=port or cfg.port,
             token=token or cfg.token,
         )
-        _client = SiYuanClient(_config)
-    ctx.obj = SiYuanContext(json_output=json_output)
+    client = SiYuanClient(cfg)
+    ctx.obj = SiYuanContext(client=client, session=session, json_output=json_output)
 
     if ctx.invoked_subcommand is None:
-        if not get_client().ping():
+        if not client.ping():
             click.echo("Error: Cannot connect to SiYuan. Is it running?", err=True)
             click.echo("  Configure via: --host --port --token", err=True)
             click.echo("  Or set: SIYUAN_HOST, SIYUAN_PORT, SIYUAN_TOKEN", err=True)
@@ -134,8 +116,8 @@ def _build_repl_commands() -> dict[str, str]:
         "doc list <notebook> <path>": "List documents at path",
         "doc tree <notebook>": "List full document tree",
         "doc get <id>": "Get document info by ID",
-        "block insert <parent> <data>": "Insert a block",
-        "block update <id> <data>": "Update a block",
+        "block insert <parent> <data>": "Insert a block (use '-' for stdin)",
+        "block update <id> <data>": "Update a block (use '-' for stdin)",
         "block delete <id>": "Delete a block",
         "block get <id>": "Get block kramdown source",
         "sql <stmt>": "Execute SQL query",
@@ -153,8 +135,10 @@ def repl(ctx: click.Context):
     """Start interactive REPL mode."""
     from cli_anything.siyuan.utils.repl_skin import ReplSkin
 
+    obj: SiYuanContext = ctx.obj
+
     try:
-        kernel_version = get_client().get_version()
+        kernel_version = obj.client.get_version()
     except SiYuanClientError:
         kernel_version = "?"
     skin = ReplSkin("siyuan", version=kernel_version)
@@ -163,8 +147,7 @@ def repl(ctx: click.Context):
     pt_session = skin.create_prompt_session()
     commands = _build_repl_commands()
 
-    session = get_session()
-    state = session.state
+    state = obj.session.state
 
     while True:
         ctx_str = ""
@@ -181,7 +164,7 @@ def repl(ctx: click.Context):
             continue
 
         if user_input in ("quit", "exit", "q"):
-            ctx.obj.session.flush()
+            obj.session.flush()
             break
 
         if user_input == "help":
@@ -189,15 +172,16 @@ def repl(ctx: click.Context):
             continue
 
         if user_input == "status":
+            connected = obj.client.ping()
             skin.status_block({
-                "Connected": str(state.connected),
+                "Connected": str(connected),
                 "Notebook": state.current_notebook_name or "(none)",
                 "Document": state.current_doc_path or "(none)",
             }, title="Status")
             continue
 
         try:
-            _handle_repl_command(skin, user_input)
+            _dispatch_repl(skin, obj, user_input)
         except SiYuanClientError as e:
             skin.error(str(e))
         except Exception as e:
@@ -206,193 +190,232 @@ def repl(ctx: click.Context):
     skin.print_goodbye()
 
 
-def _handle_repl_command(skin: Any, cmd: str) -> None:
-    """Parse and execute a REPL command."""
+def _dispatch_repl(skin: Any, ctx: SiYuanContext, cmd: str) -> None:
+    """Parse REPL command and route to the appropriate handler."""
     parts = shlex.split(cmd.strip())
     if not parts:
         return
 
-    client = get_client()
     json_mode = "--json" in parts
     parts = [p for p in parts if p != "--json"]
 
-    # notebook commands
-    if parts[0] == "notebook":
-        if len(parts) < 2:
-            skin.error("Usage: notebook <list|create|rename|remove>")
-            return
-        sub = parts[1]
-        if sub == "list":
-            notebooks = client.list_notebooks()
-            if json_mode:
-                click.echo(json.dumps(notebooks, ensure_ascii=False))
-            else:
-                skin.table(["ID", "Name", "Icon", "Closed"],
-                           [[n["id"], n["name"], n.get("icon", ""), str(n.get("closed", ""))]
-                            for n in notebooks])
-        elif sub == "create" and len(parts) >= 3:
-            name = " ".join(parts[2:])
-            nb = client.create_notebook(name)
-            get_session().update(current_notebook_id=nb["id"], current_notebook_name=nb["name"])
-            client.open_notebook(nb["id"])
-            skin.success(f'Created notebook: {nb["name"]} ({nb["id"]})')
-        elif sub == "rename" and len(parts) >= 4:
-            client.rename_notebook(parts[2], " ".join(parts[3:]))
-            skin.success("Renamed")
-        elif sub == "remove" and len(parts) >= 3:
-            client.remove_notebook(parts[2])
-            skin.success("Removed")
-        else:
-            skin.error("Invalid notebook command")
+    client = ctx.client
+    session = ctx.session
 
-    # doc commands
-    elif parts[0] == "doc":
-        if len(parts) < 2:
-            skin.error("Usage: doc <create|list|tree|get|rename|remove|export>")
-            return
-        sub = parts[1]
-        if sub == "create" and len(parts) >= 4:
-            md = ""
-            if "--md" in parts:
-                idx = parts.index("--md") + 1
-                if idx < len(parts):
-                    md = parts[idx]
-                parts = parts[:parts.index("--md")]
-            nb_id = parts[2]
-            doc_path = parts[3]
-            doc_id = client.create_doc_with_md(nb_id, doc_path, md)
-            get_session().update(current_doc_id=doc_id, current_doc_path=doc_path)
-            if json_mode:
-                click.echo(json.dumps({"id": doc_id}, ensure_ascii=False))
-            else:
-                skin.success(f"Created doc: {doc_id}")
-        elif sub == "list" and len(parts) >= 4:
-            docs = client.list_docs_by_path(parts[2], parts[3])
-            items = docs.get("files", []) if isinstance(docs, dict) else docs
-            if json_mode:
-                click.echo(json.dumps(items, ensure_ascii=False))
-            else:
-                skin.table(["ID", "Name", "Type"],
-                           [[d.get("id", ""), d.get("name", ""), d.get("type", "")]
-                            for d in items])
-        elif sub == "tree" and len(parts) >= 3:
-            tree = client.list_doc_tree(parts[2])
-            if isinstance(tree, dict):
-                items = tree.get("files") or tree.get("tree") or []
-            else:
-                items = tree
-            if json_mode:
-                click.echo(json.dumps(items, ensure_ascii=False))
-            else:
-                skin.table(["ID", "Name", "Path"],
-                           [[t.get("id", ""), t.get("name", ""), t.get("path", "")]
-                            for t in items])
-        elif sub == "get" and len(parts) >= 3:
-            hpath = client.get_hpath_by_id(parts[2])
-            if json_mode:
-                click.echo(json.dumps({"hpath": hpath}, ensure_ascii=False))
-            else:
-                skin.success(f"Path: {hpath}")
-        elif sub == "rename" and len(parts) >= 4:
-            client.rename_doc_by_id(parts[2], " ".join(parts[3:]))
-            skin.success("Renamed")
-        elif sub == "remove" and len(parts) >= 3:
-            client.remove_doc_by_id(parts[2])
-            skin.success("Removed")
-        elif sub == "export" and len(parts) >= 3:
-            md = client.export_md_content(parts[2])
-            if json_mode:
-                click.echo(json.dumps(md, ensure_ascii=False))
-            else:
-                skin.section(md.get("hPath", ""))
-                click.echo(md.get("content", ""))
-        else:
-            skin.error("Invalid doc command")
-
-    # block commands
-    elif parts[0] == "block":
-        if len(parts) < 2:
-            skin.error("Usage: block <insert|prepend|append|update|delete|get|child>")
-            return
-        sub = parts[1]
-        if sub == "insert":
-            if len(parts) < 4:
-                skin.error("Usage: block insert <parent_id> <data>")
-                return
-            result = client.insert_block("markdown", parts[3], parent_id=parts[2])
-            if json_mode:
-                click.echo(json.dumps(result, ensure_ascii=False))
-            else:
-                skin.success("Block inserted")
-        elif sub == "prepend" and len(parts) >= 4:
-            client.prepend_block("markdown", parts[3], parts[2])
-            skin.success("Block prepended")
-        elif sub == "append" and len(parts) >= 4:
-            client.append_block("markdown", parts[3], parts[2])
-            skin.success("Block appended")
-        elif sub == "update" and len(parts) >= 4:
-            client.update_block("markdown", parts[3], parts[2])
-            skin.success("Block updated")
-        elif sub == "delete" and len(parts) >= 3:
-            client.delete_block(parts[2])
-            skin.success("Block deleted")
-        elif sub == "get" and len(parts) >= 3:
-            kramdown = client.get_block_kramdown(parts[2])
-            if json_mode:
-                click.echo(json.dumps({"kramdown": kramdown}, ensure_ascii=False))
-            else:
-                click.echo(kramdown)
-        elif sub == "child" and len(parts) >= 3:
-            children = client.get_child_blocks(parts[2])
-            if json_mode:
-                click.echo(json.dumps(children, ensure_ascii=False))
-            else:
-                skin.table(["ID", "Type", "SubType"],
-                           [[c.get("id", ""), c.get("type", ""), c.get("subType", "")]
-                            for c in children])
-        else:
-            skin.error("Invalid block command")
-
-    # sql command
-    elif parts[0] == "sql" and len(parts) >= 2:
-        stmt = " ".join(parts[1:])
-        results = client.query_sql(stmt)
-        if json_mode:
-            click.echo(json.dumps(results, ensure_ascii=False))
-        elif not results:
-            skin.info("No results")
-        else:
-            headers = list(results[0].keys())
-            rows = [[str(r.get(h, "")) for h in headers] for r in results]
-            skin.table(headers, rows)
-
-    # search command
-    elif parts[0] == "search" and len(parts) >= 2:
-        query = " ".join(parts[1:])
-        data = client.search_blocks(query)
-        blocks = data.get("blocks", []) if isinstance(data, dict) else data
-        if json_mode:
-            click.echo(json.dumps(blocks, ensure_ascii=False))
-        elif not blocks:
-            skin.info("No results")
-        else:
-            skin.table(["ID", "Content"],
-                       [[r.get("id", ""), r.get("content", "")[:80]] for r in blocks])
-
-    # export command
-    elif parts[0] == "export" and len(parts) >= 3:
-        if parts[1] == "md" and len(parts) >= 3:
-            md = client.export_md_content(parts[2])
-            if json_mode:
-                click.echo(json.dumps(md, ensure_ascii=False))
-            else:
-                skin.section(md.get("hPath", ""))
-                click.echo(md.get("content", ""))
-        else:
-            skin.error("Usage: export md <doc-id>")
-
+    command = parts[0]
+    if command == "notebook":
+        _handle_notebook_repl(skin, client, session, parts, json_mode)
+    elif command == "doc":
+        _handle_doc_repl(skin, client, session, parts, json_mode)
+    elif command == "block":
+        _handle_block_repl(skin, client, parts, json_mode)
+    elif command == "sql" and len(parts) >= 2:
+        _handle_sql_repl(skin, client, parts, json_mode)
+    elif command == "search" and len(parts) >= 2:
+        _handle_search_repl(skin, client, parts, json_mode)
+    elif command == "export":
+        _handle_export_repl(skin, client, parts, json_mode)
     else:
         skin.error(f"Unknown command: {parts[0]}")
+
+
+# ── REPL sub-handlers ──────────────────────────────────────────────────
+
+def _handle_notebook_repl(skin: Any, client: SiYuanClient,
+                          session: SessionManager, parts: list[str],
+                          json_mode: bool) -> None:
+    if len(parts) < 2:
+        skin.error("Usage: notebook <list|create|rename|remove>")
+        return
+    sub = parts[1]
+    if sub == "list":
+        notebooks = client.list_notebooks()
+        if json_mode:
+            click.echo(json.dumps(notebooks, ensure_ascii=False))
+        else:
+            skin.table(["ID", "Name", "Icon", "Closed"],
+                       [[n["id"], n["name"], n.get("icon", ""), str(n.get("closed", ""))]
+                        for n in notebooks])
+    elif sub == "create" and len(parts) >= 3:
+        name = " ".join(parts[2:])
+        nb = client.create_notebook(name)
+        session.update(current_notebook_id=nb["id"], current_notebook_name=nb["name"])
+        client.open_notebook(nb["id"])
+        skin.success(f'Created notebook: {nb["name"]} ({nb["id"]})')
+    elif sub == "rename" and len(parts) >= 4:
+        client.rename_notebook(parts[2], " ".join(parts[3:]))
+        skin.success("Renamed")
+    elif sub == "remove" and len(parts) >= 3:
+        client.remove_notebook(parts[2])
+        skin.success("Removed")
+    else:
+        skin.error("Invalid notebook command")
+
+
+def _handle_doc_repl(skin: Any, client: SiYuanClient,
+                     session: SessionManager, parts: list[str],
+                     json_mode: bool) -> None:
+    if len(parts) < 2:
+        skin.error("Usage: doc <create|list|tree|get|rename|remove|export>")
+        return
+    sub = parts[1]
+    if sub == "create" and len(parts) >= 4:
+        md = ""
+        if "--md" in parts:
+            idx = parts.index("--md") + 1
+            if idx < len(parts):
+                md = parts[idx]
+            parts = parts[:parts.index("--md")]
+        if md == "-":
+            md = _read_stdin()
+        nb_id = parts[2]
+        doc_path = parts[3]
+        doc_id = client.create_doc_with_md(nb_id, doc_path, md)
+        session.update(current_doc_id=doc_id, current_doc_path=doc_path)
+        if json_mode:
+            click.echo(json.dumps({"id": doc_id}, ensure_ascii=False))
+        else:
+            skin.success(f"Created doc: {doc_id}")
+    elif sub == "list" and len(parts) >= 4:
+        docs = client.list_docs_by_path(parts[2], parts[3])
+        items = docs.get("files", []) if isinstance(docs, dict) else docs
+        if json_mode:
+            click.echo(json.dumps(items, ensure_ascii=False))
+        else:
+            skin.table(["ID", "Name", "Type"],
+                       [[d.get("id", ""), d.get("name", ""), d.get("type", "")]
+                        for d in items])
+    elif sub == "tree" and len(parts) >= 3:
+        tree = client.list_doc_tree(parts[2])
+        if isinstance(tree, dict):
+            items = tree.get("files") or tree.get("tree") or []
+        else:
+            items = tree
+        if json_mode:
+            click.echo(json.dumps(items, ensure_ascii=False))
+        else:
+            skin.table(["ID", "Name", "Path"],
+                       [[t.get("id", ""), t.get("name", ""), t.get("path", "")]
+                        for t in items])
+    elif sub == "get" and len(parts) >= 3:
+        hpath = client.get_hpath_by_id(parts[2])
+        if json_mode:
+            click.echo(json.dumps({"hpath": hpath}, ensure_ascii=False))
+        else:
+            skin.success(f"Path: {hpath}")
+    elif sub == "rename" and len(parts) >= 4:
+        client.rename_doc_by_id(parts[2], " ".join(parts[3:]))
+        skin.success("Renamed")
+    elif sub == "remove" and len(parts) >= 3:
+        client.remove_doc_by_id(parts[2])
+        skin.success("Removed")
+    elif sub == "export" and len(parts) >= 3:
+        md = client.export_md_content(parts[2])
+        if json_mode:
+            click.echo(json.dumps(md, ensure_ascii=False))
+        else:
+            skin.section(md.get("hPath", ""))
+            click.echo(md.get("content", ""))
+    else:
+        skin.error("Invalid doc command")
+
+
+def _handle_block_repl(skin: Any, client: SiYuanClient,
+                       parts: list[str], json_mode: bool) -> None:
+    if len(parts) < 2:
+        skin.error("Usage: block <insert|prepend|append|update|delete|get|child>")
+        return
+    sub = parts[1]
+    if sub == "insert":
+        if len(parts) < 4:
+            skin.error("Usage: block insert <parent_id> <data>")
+            return
+        data = parts[3]
+        if data == "-":
+            data = _read_stdin()
+        result = client.insert_block("markdown", data, parent_id=parts[2])
+        if json_mode:
+            click.echo(json.dumps(result, ensure_ascii=False))
+        else:
+            skin.success("Block inserted")
+    elif sub == "prepend" and len(parts) >= 4:
+        data = parts[3]
+        if data == "-":
+            data = _read_stdin()
+        client.prepend_block("markdown", data, parts[2])
+        skin.success("Block prepended")
+    elif sub == "append" and len(parts) >= 4:
+        data = parts[3]
+        if data == "-":
+            data = _read_stdin()
+        client.append_block("markdown", data, parts[2])
+        skin.success("Block appended")
+    elif sub == "update" and len(parts) >= 4:
+        data = parts[3]
+        if data == "-":
+            data = _read_stdin()
+        client.update_block("markdown", data, parts[2])
+        skin.success("Block updated")
+    elif sub == "delete" and len(parts) >= 3:
+        client.delete_block(parts[2])
+        skin.success("Block deleted")
+    elif sub == "get" and len(parts) >= 3:
+        kramdown = client.get_block_kramdown(parts[2])
+        if json_mode:
+            click.echo(json.dumps({"kramdown": kramdown}, ensure_ascii=False))
+        else:
+            click.echo(kramdown)
+    elif sub == "child" and len(parts) >= 3:
+        children = client.get_child_blocks(parts[2])
+        if json_mode:
+            click.echo(json.dumps(children, ensure_ascii=False))
+        else:
+            skin.table(["ID", "Type", "SubType"],
+                       [[c.get("id", ""), c.get("type", ""), c.get("subType", "")]
+                        for c in children])
+    else:
+        skin.error("Invalid block command")
+
+
+def _handle_sql_repl(skin: Any, client: SiYuanClient,
+                     parts: list[str], json_mode: bool) -> None:
+    stmt = " ".join(parts[1:])
+    results = client.query_sql(stmt)
+    if json_mode:
+        click.echo(json.dumps(results, ensure_ascii=False))
+    elif not results:
+        skin.info("No results")
+    else:
+        headers = list(results[0].keys())
+        rows = [[str(r.get(h, "")) for h in headers] for r in results]
+        skin.table(headers, rows)
+
+
+def _handle_search_repl(skin: Any, client: SiYuanClient,
+                        parts: list[str], json_mode: bool) -> None:
+    query = " ".join(parts[1:])
+    data = client.search_blocks(query)
+    blocks = data.get("blocks", []) if isinstance(data, dict) else data
+    if json_mode:
+        click.echo(json.dumps(blocks, ensure_ascii=False))
+    elif not blocks:
+        skin.info("No results")
+    else:
+        skin.table(["ID", "Content"],
+                   [[r.get("id", ""), r.get("content", "")[:80]] for r in blocks])
+
+
+def _handle_export_repl(skin: Any, client: SiYuanClient,
+                        parts: list[str], json_mode: bool) -> None:
+    if parts[1] == "md" and len(parts) >= 3:
+        md = client.export_md_content(parts[2])
+        if json_mode:
+            click.echo(json.dumps(md, ensure_ascii=False))
+        else:
+            skin.section(md.get("hPath", ""))
+            click.echo(md.get("content", ""))
+    else:
+        skin.error("Usage: export md <doc-id>")
 
 
 # ── Notebook commands ──────────────────────────────────────────────────
