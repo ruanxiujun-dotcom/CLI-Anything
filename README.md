@@ -1039,6 +1039,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 138</td>
 </tr>
 <tr>
+<td align="center"><strong><a href="eez-studio/agent-harness/">EEZ Studio</a></strong></td>
+<td>Embedded UI / Instrument Automation</td>
+<td><code>cli-anything-eez-studio</code></td>
+<td>.eez-project JSON + EEZ Studio Node backend</td>
+<td align="center">✅ <a href="eez-studio/agent-harness/">New</a></td>
+</tr>
+<tr>
 <td align="center"><strong>⛓️ ETH2 QuickStart</strong></td>
 <td>DevOps / Ethereum</td>
 <td><code>cli-anything-eth2-quickstart</code></td>
@@ -1298,6 +1305,7 @@ cli-anything/
 ├── 📞 zoom/agent-harness/               # Zoom CLI (22 tests)
 ├── 🎵 musescore/agent-harness/          # MuseScore CLI (56 tests)
 ├── 📐 drawio/agent-harness/             # Draw.io CLI (138 tests)
+├── 🧪 eez-studio/agent-harness/         # EEZ Studio CLI (project, LVGL, SCPI automation)
 ├── ⛓️ eth2-quickstart/agent-harness/    # ETH2 QuickStart CLI (18 unit, 3 e2e skipped)
 ├── 🧜 mermaid/agent-harness/            # Mermaid Live Editor CLI (10 tests)
 ├── ✨ anygen/agent-harness/             # AnyGen CLI (50 tests)

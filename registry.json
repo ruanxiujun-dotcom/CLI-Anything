@@ -177,6 +177,25 @@
       ]
     },
     {
+      "name": "eez-studio",
+      "display_name": "EEZ Studio",
+      "version": "0.1.0",
+      "description": "EEZ Studio project, LVGL UI, and SCPI command automation via native .eez-project JSON and real EEZ Studio backend hooks",
+      "requires": "EEZ Studio source checkout built with npm run build; Docker for full LVGL simulator builds",
+      "homepage": "https://www.envox.eu/studio/studio-introduction/",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=eez-studio/agent-harness",
+      "entry_point": "cli-anything-eez-studio",
+      "skill_md": "skills/cli-anything-eez-studio/SKILL.md",
+      "category": "automation",
+      "contributors": [
+        {
+          "name": "CLI-Anything-Team",
+          "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
+    },
+    {
       "name": "eth2-quickstart",
       "display_name": "ETH2 QuickStart",
       "version": "1.0.0",
