@@ -13,7 +13,7 @@ Before editing, write `creative_direction.md`. Do not start final assembly until
 - **Genre contract:** trailer, sports hype, movie recap, tutorial, launch film, lyric edit, etc.
 - **Story arc:** beginning, escalation, turning point, climax, resolution.
 - **Emotional curve:** e.g. curiosity -> tension -> threat -> release -> triumph.
-- **Audio arc:** music sections, narration/source-audio role, silence/breaks, hits, risers, drops, and final resolve.
+- **Audio arc:** main music strategy, music sections, narration/source-audio role, silence/breaks, hits, risers, drops, and final resolve.
 - **Cut-density curve:** where cuts are slow, where they accelerate, where the edit breathes.
 - **Visual motif:** repeated image idea, color/shape/title system, or source pattern that ties the video together.
 - **Source roles:** which clips/sources establish world, conflict, evidence, spectacle, payoff, or texture.
@@ -23,7 +23,7 @@ Before editing, write `creative_direction.md`. Do not start final assembly until
 
 1. **Define the spine.** Pick a clear premise and a final payoff before selecting shots.
 2. **Choose the arc shape.** Use one of the patterns below, then adapt it.
-3. **Map audio first.** Mark music/narration sections and major beat hits. The edit should respond to audio structure, not just play under it.
+3. **Map audio first.** Choose whether the main bed is AI-generated music, downloaded relevant/authorized music, user-supplied music, or source ambience. Then mark music/narration sections and major beat hits. The edit should respond to audio structure, not just play under it.
 4. **Assign shot jobs.** Every selected segment needs a narrative job: setup, reveal, escalation, contrast, proof, impact, or payoff.
 5. **Only then assemble.** Build rough cut by story beats, not source order.
 
@@ -89,7 +89,8 @@ Audio: keep music low and simple. Rhythm comes from edits, cursor movement, call
 - Use silence as a design element. A 200-500 ms dip before a drop can make the next shot feel stronger than another constant hit.
 - Narration, dialogue, source audio, music, and SFX must have roles. If everything is loud all the time, nothing has impact.
 - Check loudness by section, not only whole-file mean volume. Flat mean volume can hide a boring mix.
-- If generating procedural score/hits, write the intended structure first. Do not generate a single tone loop and hope it creates drama.
+- For polished 60+ second videos, do not default to a procedural tone/noise bed as the main soundtrack. Prefer AI-generated music, downloaded relevant/authorized music, user-supplied music, or source-ambience-led design.
+- If generating procedural hits/risers/pulses, write the intended structure first and keep them as stems or accents. Do not generate a single tone/noise loop and hope it creates drama.
 
 ## Assembly Rules
 
@@ -97,7 +98,7 @@ Audio: keep music low and simple. Rhythm comes from edits, cursor movement, call
 - Repeated footage is allowed only as a deliberate callback, escalation, or motif. Accidental repetition is a failure.
 - Chapter cards must change the story beat; they cannot be decorative separators for random clips.
 - Every 10-20 seconds, something should change: setting, tension, density, audio texture, title system, character focus, or edit pattern.
-- The final 10% must resolve the premise. It should not just stop because the timeline reached the target duration.
+- The ending must resolve the premise, intentionally withhold resolution, or hand off to a next action. It should not stop only because the timeline reached the target duration.
 
 ## Review Rubric
 
@@ -107,6 +108,7 @@ Fail and revise if any answer is "no":
 - Does the middle develop or escalate instead of continuing the same pattern?
 - Is there a clear high point or turning point?
 - Does the audio have sections, not just volume?
+- Is the main music/ambience strategy credible for the genre, rather than a synthetic test-tone/noise bed?
 - Do music hits, source audio, titles, and cuts reinforce the same moments?
 - Do the chosen sources have assigned narrative roles?
 - Would removing the chapter cards still leave an understandable arc?
