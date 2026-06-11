@@ -71,7 +71,7 @@ class TestCLISubprocess:
         assert "Usage:" in result.stdout
         print(f"\n  --help: OK ({len(result.stdout)} chars)")
 
-    def test_version_json(self, tmp_dir: Path):
+    def test_version_json(self, client: SiYuanClient):
         """--json version returns valid JSON with version string."""
         result = self._run(["--json", "version"])
         assert result.returncode == 0
@@ -80,7 +80,7 @@ class TestCLISubprocess:
         assert data["version"]
         print(f"\n  SiYuan version: {data['version']}")
 
-    def test_status_json(self, tmp_dir: Path):
+    def test_status_json(self, client: SiYuanClient):
         """--json status returns valid JSON with connection info."""
         result = self._run(["--json", "status"])
         assert result.returncode == 0

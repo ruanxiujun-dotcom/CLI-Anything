@@ -1,6 +1,6 @@
 # cli-anything-siyuan
 
-A CLI harness for [SiYuan](https://github.com/siyuan-note/siyuan) (思源笔记) — 
+A CLI harness for [SiYuan](https://github.com/siyuan-note/siyuan) (思源笔记) —
 interact with your knowledge base from the terminal.
 
 ## Prerequisites
@@ -89,7 +89,7 @@ Inside the REPL:
 ◆  cli-anything · Siyuan                   v1.0.0
    ◇ Install: npx skills add HKUDS/CLI-Anything --skill cli-anything-siyuan -g -y
    ◇ Global skill: ~/.agents/skills/cli-anything-siyuan/SKILL.md
-   
+
    Type help for commands, quit to exit
 
 siyuan ❯ notebook list
