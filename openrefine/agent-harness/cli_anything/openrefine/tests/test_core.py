@@ -16,12 +16,15 @@ from cli_anything.openrefine.core.operations import (
 )
 from cli_anything.openrefine.core.project import OpenRefineService, _extract_project_id
 from cli_anything.openrefine.core.session import SessionState, SessionStore
+from cli_anything.openrefine import openrefine_cli
 from cli_anything.openrefine.openrefine_cli import _repl_to_args, cli
 from cli_anything.openrefine.utils.openrefine_backend import OpenRefineError, _coerce_json_or_text
 
 
 class FakeBackend:
-    def __init__(self):
+    def __init__(self, base_url="http://127.0.0.1:3333", timeout=30.0):
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
         self.created = {"project": "123"}
         self.operations = []
         self.deleted = []
@@ -149,6 +152,18 @@ def test_session_save_creates_parent_and_loads(tmp_path):
     assert store.load().project_id == "p1"
 
 
+def test_session_effective_base_url_prefers_requested(tmp_path):
+    store = SessionStore(tmp_path / "s.json")
+    store.save(SessionState(base_url="http://127.0.0.1:4444"))
+    assert store.effective_base_url("http://127.0.0.1:5555") == "http://127.0.0.1:5555"
+
+
+def test_session_effective_base_url_reuses_session(tmp_path):
+    store = SessionStore(tmp_path / "s.json")
+    store.save(SessionState(base_url="http://127.0.0.1:4444"))
+    assert store.effective_base_url() == "http://127.0.0.1:4444"
+
+
 def test_session_record_clears_future():
     store = SessionStore()
     state = SessionState(future=[{"action": "redo"}])
@@ -211,18 +226,20 @@ def test_service_list_projects(tmp_path):
 
 def test_service_open_project_persists_session(tmp_path):
     store = SessionStore(tmp_path / "s.json")
-    result = OpenRefineService(FakeBackend(), store).open_project("123")
+    result = OpenRefineService(FakeBackend(base_url="http://127.0.0.1:4444"), store).open_project("123")
     assert result["project_name"] == "Project 123"
     assert store.load().project_id == "123"
+    assert store.load().base_url == "http://127.0.0.1:4444"
 
 
 def test_service_import_file_persists_project(tmp_path):
     csv = tmp_path / "input.csv"
     csv.write_text("a\n1\n", encoding="utf-8")
     store = SessionStore(tmp_path / "s.json")
-    result = OpenRefineService(FakeBackend(), store).import_file(csv, name="Imported")
+    result = OpenRefineService(FakeBackend(base_url="http://127.0.0.1:4444"), store).import_file(csv, name="Imported")
     assert result["project_id"] == "123"
     assert store.load().project_name == "Imported"
+    assert store.load().base_url == "http://127.0.0.1:4444"
 
 
 def test_service_apply_operations_uses_session_project(tmp_path):
@@ -315,6 +332,36 @@ def test_repl_to_args(parts, args):
     assert _repl_to_args(parts) == args
 
 
+@pytest.mark.parametrize("parts", [["import"], ["open"], ["export"]])
+def test_repl_to_args_rejects_incomplete_commands(parts):
+    with pytest.raises(ValueError):
+        _repl_to_args(parts)
+
+
+def test_cli_uses_session_base_url_when_not_supplied(tmp_path, monkeypatch):
+    session = tmp_path / "s.json"
+    SessionStore(session).save(SessionState(base_url="http://127.0.0.1:4444", project_id="123"))
+    seen = {}
+
+    class RecordingBackend(FakeBackend):
+        def get_rows(self, project_id, start=0, limit=10):
+            seen["base_url"] = self.base_url
+            return super().get_rows(project_id, start=start, limit=limit)
+
+    monkeypatch.setattr(openrefine_cli, "OpenRefineBackend", RecordingBackend)
+    result = CliRunner().invoke(cli, ["--json", "--session", str(session), "data", "rows"])
+    assert result.exit_code == 0
+    assert seen["base_url"] == "http://127.0.0.1:4444"
+
+
+def test_cli_session_show_invalid_json_uses_json_error(tmp_path):
+    session = tmp_path / "s.json"
+    session.write_text("{bad", encoding="utf-8")
+    result = CliRunner().invoke(cli, ["--json", "--session", str(session), "session", "show"])
+    assert result.exit_code == 1
+    assert json.loads(result.stderr)["ok"] is False
+
+
 def test_cli_help_runs():
     result = CliRunner().invoke(cli, ["--help"])
     assert result.exit_code == 0
@@ -367,7 +414,8 @@ def test_cli_session_show_json_uses_custom_path(tmp_path):
 def test_cli_default_enters_repl_and_exits():
     result = CliRunner().invoke(cli, input="exit\n")
     assert result.exit_code == 0
-    assert "openrefine CLI-Anything" in result.output
+    assert "cli-anything" in result.output
+    assert "Openrefine" in result.output
 
 
 def test_openrefine_error_is_runtime_error():

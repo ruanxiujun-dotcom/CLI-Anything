@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -55,17 +54,16 @@ class SessionStore:
         return SessionState.from_dict(data)
 
     def save(self, state: SessionState) -> Path:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(prefix=".session-", suffix=".json", dir=str(self.path.parent))
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(state.to_dict(), handle, indent=2, sort_keys=True)
-                handle.write("\n")
-            os.replace(tmp_name, self.path)
-        finally:
-            if os.path.exists(tmp_name):
-                os.unlink(tmp_name)
+        _locked_save_json(self.path, state.to_dict(), indent=2, sort_keys=True)
         return self.path
+
+    def effective_base_url(self, requested_base_url: str | None = None) -> str:
+        if requested_base_url:
+            return requested_base_url
+        try:
+            return self.load().base_url
+        except FileNotFoundError:
+            return SessionState().base_url
 
     def record(self, state: SessionState, action: str, payload: dict[str, Any]) -> None:
         state.history.append({"action": action, "payload": payload})
@@ -84,3 +82,30 @@ class SessionStore:
         item = state.future.pop()
         state.history.append(item)
         return item
+
+
+def _locked_save_json(path: Path, data: dict[str, Any], **dump_kwargs: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        handle = path.open("r+", encoding="utf-8")
+    except FileNotFoundError:
+        handle = path.open("w+", encoding="utf-8")
+    with handle:
+        locked = False
+        try:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            locked = True
+        except (ImportError, OSError):
+            pass
+        try:
+            handle.seek(0)
+            handle.truncate()
+            json.dump(data, handle, **dump_kwargs)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        finally:
+            if locked:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)

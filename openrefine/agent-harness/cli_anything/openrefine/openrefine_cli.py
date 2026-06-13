@@ -4,6 +4,7 @@ import json
 import os
 import shlex
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,10 @@ from .utils.repl_skin import ReplSkin
 
 
 def _service(ctx: click.Context) -> OpenRefineService:
-    return OpenRefineService(OpenRefineBackend(ctx.obj["base_url"], timeout=ctx.obj["timeout"]), SessionStore(ctx.obj["session"]))
+    store = SessionStore(ctx.obj["session"])
+    base_url = store.effective_base_url(ctx.obj["base_url"])
+    ctx.obj["effective_base_url"] = base_url
+    return OpenRefineService(OpenRefineBackend(base_url, timeout=ctx.obj["timeout"]), store)
 
 
 def _emit(data: Any, as_json: bool) -> None:
@@ -43,7 +47,7 @@ def _handle(ctx: click.Context, func, *args, **kwargs) -> None:
 
 
 @click.group(invoke_without_command=True)
-@click.option("--base-url", default=lambda: os.environ.get("OPENREFINE_URL", "http://127.0.0.1:3333"), show_default=True)
+@click.option("--base-url", default=None, help="OpenRefine URL. Defaults to OPENREFINE_URL, then session state, then http://127.0.0.1:3333.")
 @click.option("--session", "session_path", type=click.Path(dir_okay=False), default=None, help="Session JSON path.")
 @click.option("--timeout", type=float, default=30.0, show_default=True)
 @click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON.")
@@ -52,7 +56,8 @@ def _handle(ctx: click.Context, func, *args, **kwargs) -> None:
 def cli(ctx: click.Context, base_url: str, session_path: str | None, timeout: float, json_output: bool) -> None:
     """Agent-native CLI for OpenRefine's local HTTP API."""
     ctx.ensure_object(dict)
-    ctx.obj.update({"base_url": base_url, "session": session_path, "timeout": timeout, "json": json_output})
+    requested_base_url = base_url or os.environ.get("OPENREFINE_URL")
+    ctx.obj.update({"base_url": requested_base_url, "session": session_path, "timeout": timeout, "json": json_output})
     if ctx.invoked_subcommand is None:
         ctx.invoke(repl)
 
@@ -61,7 +66,8 @@ def cli(ctx: click.Context, base_url: str, session_path: str | None, timeout: fl
 @click.pass_context
 def repl(ctx: click.Context) -> None:
     """Start the interactive REPL."""
-    skin = ReplSkin("openrefine", version=__version__)
+    history_file = _repl_history_file(ctx)
+    skin = ReplSkin("openrefine", version=__version__, history_file=history_file)
     skin.print_banner()
     prompt = skin.create_prompt_session()
     commands = {
@@ -81,8 +87,17 @@ def repl(ctx: click.Context) -> None:
         except (EOFError, KeyboardInterrupt):
             skin.print_goodbye()
             return
-        parts = shlex.split(line)
+        try:
+            parts = shlex.split(line)
+        except (IndexError, ValueError) as exc:
+            skin.error(str(exc))
+            continue
         if not parts:
+            continue
+        try:
+            args = _repl_to_args(parts)
+        except (IndexError, ValueError) as exc:
+            skin.error(str(exc))
             continue
         if parts[0] in {"exit", "quit"}:
             skin.print_goodbye()
@@ -90,9 +105,8 @@ def repl(ctx: click.Context) -> None:
         if parts[0] == "help":
             skin.help(commands)
             continue
-        args = _repl_to_args(parts)
         try:
-            cli.main(args=args, prog_name="cli-anything-openrefine", obj=ctx.obj, standalone_mode=False)
+            cli.main(args=_global_args(ctx) + args, prog_name="cli-anything-openrefine", obj=ctx.obj, standalone_mode=False)
         except SystemExit:
             pass
         except Exception as exc:
@@ -104,15 +118,21 @@ def _repl_to_args(parts: list[str]) -> list[str]:
     if command == "projects":
         return ["project", "list"]
     if command == "import":
+        if len(parts) < 2:
+            raise ValueError("Usage: import <path> [name]")
         args = ["project", "import", parts[1]]
         if len(parts) > 2:
             args.extend(["--name", parts[2]])
         return args
     if command == "open":
+        if len(parts) < 2:
+            raise ValueError("Usage: open <project_id>")
         return ["project", "open", parts[1]]
     if command == "rows":
         return ["data", "rows", "--limit", parts[1] if len(parts) > 1 else "10"]
     if command == "export":
+        if len(parts) < 2:
+            raise ValueError("Usage: export <path> [format]")
         args = ["data", "export", parts[1]]
         if len(parts) > 2:
             args.extend(["--format", parts[2]])
@@ -122,11 +142,31 @@ def _repl_to_args(parts: list[str]) -> list[str]:
     return parts
 
 
+def _global_args(ctx: click.Context) -> list[str]:
+    args: list[str] = []
+    base_url = ctx.obj.get("effective_base_url") or ctx.obj.get("base_url")
+    if base_url:
+        args.extend(["--base-url", str(base_url)])
+    if ctx.obj.get("session"):
+        args.extend(["--session", str(ctx.obj["session"])])
+    if ctx.obj.get("timeout") is not None:
+        args.extend(["--timeout", str(ctx.obj["timeout"])])
+    if ctx.obj.get("json"):
+        args.append("--json")
+    return args
+
+
+def _repl_history_file(ctx: click.Context) -> str:
+    if ctx.obj.get("session"):
+        return str(Path(ctx.obj["session"]).expanduser().with_name("history"))
+    return str(Path(tempfile.gettempdir()) / "cli-anything-openrefine-history")
+
+
 @cli.command()
 @click.pass_context
 def status(ctx: click.Context) -> None:
     """Show backend health and current session."""
-    _handle(ctx, _service(ctx).status)
+    _handle(ctx, lambda: _service(ctx).status())
 
 
 @cli.group()
@@ -146,7 +186,7 @@ def server_start(ctx: click.Context, port: int, host: str, data_dir: str | None)
 @server.command("ping")
 @click.pass_context
 def server_ping(ctx: click.Context) -> None:
-    _handle(ctx, OpenRefineBackend(ctx.obj["base_url"], timeout=ctx.obj["timeout"]).ping)
+    _handle(ctx, lambda: _service(ctx).backend.ping())
 
 
 @cli.group()
@@ -157,7 +197,7 @@ def project() -> None:
 @project.command("list")
 @click.pass_context
 def project_list(ctx: click.Context) -> None:
-    _handle(ctx, _service(ctx).list_projects)
+    _handle(ctx, lambda: _service(ctx).list_projects())
 
 
 @project.command("open")
@@ -165,7 +205,7 @@ def project_list(ctx: click.Context) -> None:
 @click.option("--name")
 @click.pass_context
 def project_open(ctx: click.Context, project_id: str, name: str | None) -> None:
-    _handle(ctx, _service(ctx).open_project, project_id, name)
+    _handle(ctx, lambda: _service(ctx).open_project(project_id, name))
 
 
 @project.command("import")
@@ -174,7 +214,7 @@ def project_open(ctx: click.Context, project_id: str, name: str | None) -> None:
 @click.option("--format", "project_format")
 @click.pass_context
 def project_import(ctx: click.Context, input_path: str, name: str | None, project_format: str | None) -> None:
-    _handle(ctx, _service(ctx).import_file, input_path, name, project_format)
+    _handle(ctx, lambda: _service(ctx).import_file(input_path, name, project_format))
 
 
 @cli.group()
@@ -188,7 +228,7 @@ def data() -> None:
 @click.option("--limit", default=10, show_default=True)
 @click.pass_context
 def data_rows(ctx: click.Context, project_id: str | None, start: int, limit: int) -> None:
-    _handle(ctx, _service(ctx).rows, start, limit, project_id)
+    _handle(ctx, lambda: _service(ctx).rows(start, limit, project_id))
 
 
 @data.command("apply")
@@ -196,7 +236,7 @@ def data_rows(ctx: click.Context, project_id: str | None, start: int, limit: int
 @click.option("--project-id")
 @click.pass_context
 def data_apply(ctx: click.Context, operations_json: str, project_id: str | None) -> None:
-    _handle(ctx, _service(ctx).apply_operations_file, operations_json, project_id)
+    _handle(ctx, lambda: _service(ctx).apply_operations_file(operations_json, project_id))
 
 
 @data.command("export")
@@ -205,7 +245,7 @@ def data_apply(ctx: click.Context, operations_json: str, project_id: str | None)
 @click.option("--format", "export_format", default="csv", show_default=True)
 @click.pass_context
 def data_export(ctx: click.Context, output_path: str, project_id: str | None, export_format: str) -> None:
-    _handle(ctx, _service(ctx).export_rows, output_path, export_format, project_id)
+    _handle(ctx, lambda: _service(ctx).export_rows(output_path, export_format, project_id))
 
 
 @cli.group()
@@ -271,21 +311,21 @@ def session() -> None:
 @session.command("show")
 @click.pass_context
 def session_show(ctx: click.Context) -> None:
-    _emit(SessionStore(ctx.obj["session"]).load().to_dict(), ctx.obj["json"])
+    _handle(ctx, lambda: SessionStore(ctx.obj["session"]).load().to_dict())
 
 
 @session.command("undo")
 @click.option("--project-id")
 @click.pass_context
 def session_undo(ctx: click.Context, project_id: str | None) -> None:
-    _handle(ctx, _service(ctx).undo, project_id)
+    _handle(ctx, lambda: _service(ctx).undo(project_id))
 
 
 @session.command("redo")
 @click.option("--project-id")
 @click.pass_context
 def session_redo(ctx: click.Context, project_id: str | None) -> None:
-    _handle(ctx, _service(ctx).redo, project_id)
+    _handle(ctx, lambda: _service(ctx).redo(project_id))
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -171,7 +171,7 @@ def start_openrefine(port: int = 3333, host: str = "127.0.0.1", data_dir: str | 
     args = [exe, "-i", host, "-p", str(port)]
     if data_dir:
         args.extend(["-d", str(data_dir)])
-    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def _coerce_json_or_text(text: str) -> Any:

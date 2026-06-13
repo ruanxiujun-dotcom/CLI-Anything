@@ -24,6 +24,7 @@ class OpenRefineService:
     def open_project(self, project_id: str, name: str | None = None) -> dict[str, Any]:
         metadata = self.backend.get_project_metadata(project_id)
         state = self.store.load()
+        state.base_url = self._backend_base_url()
         state.project_id = project_id
         state.project_name = name or metadata.get("name") or metadata.get("projectName") or project_id
         self.store.record(state, "open", {"project_id": project_id, "project_name": state.project_name})
@@ -34,6 +35,7 @@ class OpenRefineService:
         created = self.backend.create_project(path, name=name, project_format=project_format)
         project_id = _extract_project_id(created)
         state = self.store.load()
+        state.base_url = self._backend_base_url()
         state.project_id = project_id
         state.project_name = name or Path(path).stem
         self.store.record(state, "import", {"path": str(path), "project_id": project_id, "project_name": state.project_name})
@@ -47,6 +49,7 @@ class OpenRefineService:
         if not target_id:
             raise ValueError("No project selected. Pass --project-id or import/open a project first.")
         response = self.backend.apply_operations(target_id, operations)
+        state.base_url = self._backend_base_url()
         self.store.record(state, "apply-operations", {"project_id": target_id, "operations_path": str(operations_path), "count": len(operations)})
         state.project_id = target_id
         self.store.save(state)
@@ -58,6 +61,7 @@ class OpenRefineService:
         if not target_id:
             raise ValueError("No project selected. Pass --project-id or import/open a project first.")
         output = self.backend.export_rows(target_id, output_path, export_format)
+        state.base_url = self._backend_base_url()
         state.project_id = target_id
         state.last_export = str(output)
         self.store.record(state, "export", {"project_id": target_id, "output": str(output), "format": export_format})
@@ -79,6 +83,7 @@ class OpenRefineService:
             self.store.save(state)
             return {"mode": "session", "undone": local}
         response = self.backend.undo(target_id)
+        state.base_url = self._backend_base_url()
         local = self.store.undo(state) if state.history else None
         self.store.save(state)
         return {"mode": "backend", "project_id": target_id, "response": response, "local": local}
@@ -91,9 +96,13 @@ class OpenRefineService:
             self.store.save(state)
             return {"mode": "session", "redone": local}
         response = self.backend.redo(target_id)
+        state.base_url = self._backend_base_url()
         local = self.store.redo(state) if state.future else None
         self.store.save(state)
         return {"mode": "backend", "project_id": target_id, "response": response, "local": local}
+
+    def _backend_base_url(self) -> str:
+        return str(getattr(self.backend, "base_url", SessionState().base_url))
 
 
 def _extract_project_id(payload: dict[str, Any]) -> str:
