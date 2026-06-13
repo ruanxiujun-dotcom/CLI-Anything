@@ -104,11 +104,20 @@ class OpenRefineBackend:
         target.write_bytes(response.content)
         return target
 
+    def get_history(self, project_id: str) -> dict[str, Any]:
+        return self._json("GET", "/command/core/get-history", params={"project": project_id}, csrf=False)
+
     def undo(self, project_id: str) -> dict[str, Any]:
-        return self._json("POST", "/command/core/undo-redo", data={"project": project_id, "undo": "true"}, csrf=True)
+        entry_id = _latest_history_entry_id(self.get_history(project_id), "past")
+        if not entry_id:
+            raise OpenRefineError(f"No OpenRefine history entry to undo for project {project_id}")
+        return self._json("POST", "/command/core/undo-redo", data={"project": project_id, "undoID": entry_id}, csrf=True)
 
     def redo(self, project_id: str) -> dict[str, Any]:
-        return self._json("POST", "/command/core/undo-redo", data={"project": project_id, "redo": "true"}, csrf=True)
+        entry_id = _latest_history_entry_id(self.get_history(project_id), "future")
+        if not entry_id:
+            raise OpenRefineError(f"No OpenRefine history entry to redo for project {project_id}")
+        return self._json("POST", "/command/core/undo-redo", data={"project": project_id, "undoID": entry_id}, csrf=True)
 
     def delete_project(self, project_id: str) -> dict[str, Any]:
         return self._json("POST", "/command/core/delete-project", data={"project": project_id}, csrf=True)
@@ -189,4 +198,18 @@ def _project_id_from_url(url: str) -> str | None:
     values = parse_qs(parsed.query).get("project") or parse_qs(parsed.query).get("projectID")
     if values and values[0]:
         return str(values[0])
+    return None
+
+
+def _latest_history_entry_id(history: dict[str, Any], stack_name: str) -> str | None:
+    entries = history.get(stack_name) or []
+    if not isinstance(entries, list) or not entries:
+        return None
+    entry = entries[-1] if stack_name == "past" else entries[0]
+    if not isinstance(entry, dict):
+        return None
+    for key in ("id", "historyEntryID", "history_entry_id"):
+        value = entry.get(key)
+        if value is not None:
+            return str(value)
     return None

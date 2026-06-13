@@ -18,7 +18,7 @@ from cli_anything.openrefine.core.project import OpenRefineService, _extract_pro
 from cli_anything.openrefine.core.session import SessionState, SessionStore
 from cli_anything.openrefine import openrefine_cli
 from cli_anything.openrefine.openrefine_cli import _repl_to_args, cli
-from cli_anything.openrefine.utils.openrefine_backend import OpenRefineError, _coerce_json_or_text
+from cli_anything.openrefine.utils.openrefine_backend import OpenRefineBackend, OpenRefineError, _coerce_json_or_text
 
 
 class FakeBackend:
@@ -58,6 +58,20 @@ class FakeBackend:
 
     def redo(self, project_id):
         return {"redone": project_id}
+
+
+class RecordingOpenRefineBackend(OpenRefineBackend):
+    def __init__(self, history):
+        self.history = history
+        self.calls = []
+
+    def _json(self, method, path, **kwargs):
+        self.calls.append((method, path, kwargs))
+        if path == "/command/core/get-history":
+            return self.history
+        if path == "/command/core/undo-redo":
+            return {"code": "ok", "data": kwargs["data"]}
+        raise AssertionError(f"Unexpected endpoint: {path}")
 
 
 def test_text_transform_shape():
@@ -314,6 +328,28 @@ def test_service_redo_backend_when_project(tmp_path):
 @pytest.mark.parametrize("text,expected", [("{\"a\": 1}", {"a": 1}), ("plain", "plain"), ("", "")])
 def test_coerce_json_or_text(text, expected):
     assert _coerce_json_or_text(text) == expected
+
+
+def test_backend_undo_uses_openrefine_undo_id():
+    backend = RecordingOpenRefineBackend({"past": [{"id": 10}, {"id": 11}], "future": []})
+    result = backend.undo("123")
+    assert result["data"] == {"project": "123", "undoID": "11"}
+
+
+def test_backend_redo_uses_openrefine_undo_id():
+    backend = RecordingOpenRefineBackend({"past": [], "future": [{"id": 12}, {"id": 13}]})
+    result = backend.redo("123")
+    assert result["data"] == {"project": "123", "undoID": "12"}
+
+
+def test_backend_undo_without_history_raises():
+    with pytest.raises(OpenRefineError):
+        RecordingOpenRefineBackend({"past": []}).undo("123")
+
+
+def test_backend_redo_without_history_raises():
+    with pytest.raises(OpenRefineError):
+        RecordingOpenRefineBackend({"future": []}).redo("123")
 
 
 @pytest.mark.parametrize("parts,args", [
