@@ -167,9 +167,9 @@
     }
     .nav-in { max-width: 1180px; margin: 0 auto; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; gap: 14px; height: 64px; }
     .nav-brand { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; font-weight: 800; font-size: 1.08rem; letter-spacing: -0.02em; }
-    .nav-brand::before { content: ''; width: 9px; height: 9px; border-radius: 50%;
-      background: conic-gradient(from 210deg, hsl(calc(var(--accent-band) + 30) 55% 62%), hsl(var(--accent-band) 60% 58%), hsl(calc(var(--accent-band) - 30) 50% 56%), hsl(calc(var(--accent-band) - 15) 55% 60%), hsl(calc(var(--accent-band) + 30) 55% 62%));
-      box-shadow: 0 0 14px hsl(var(--accent-band) 60% 60% / 0.6); }
+    .nav-brand-badge { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; flex-shrink: 0;
+      border: 1px solid var(--glass-border); background: var(--chip-bg); box-shadow: var(--glass-shadow); }
+    .nav-brand-badge svg { width: 64%; height: 64%; }
     .nav-links { display: flex; align-items: center; gap: 4px; }
     .nav-link { padding: 7px 11px; border-radius: 10px; text-decoration: none; color: var(--ink-2); font-size: 0.84rem; font-weight: 500;
       transition: color .18s, background .18s; display: inline-flex; align-items: center; gap: 6px; }
@@ -184,7 +184,39 @@
     .theme-toggle .icon-moon { display: none; }
     [data-theme="light"] .theme-toggle .icon-moon { display: block; }
     [data-theme="light"] .theme-toggle .icon-sun { display: none; }
-    @media (max-width: 720px) { .nav-link:not([href*="github"]) { display: none; } }
+
+    /* Mobile nav drawer */
+    .nav-menu { display: flex; align-items: center; gap: 4px; }
+    .nav-toggle { display: none; position: relative; z-index: 70; place-items: center; width: 38px; height: 38px;
+      border-radius: 11px; border: 1px solid var(--line); background: var(--chip-bg); color: var(--ink); cursor: pointer;
+      transition: color .18s, border-color .18s; }
+    .nav-toggle:hover { border-color: var(--ink-3); }
+    .nav-toggle svg { width: 19px; height: 19px; }
+    .nav-toggle .icon-x { display: none; }
+    .nav-toggle.open .icon-bars { display: none; }
+    .nav-toggle.open .icon-x { display: block; }
+    .nav-scrim { position: fixed; inset: 0; z-index: 55; background: rgba(2,5,10,0.5);
+      -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); opacity: 0; visibility: hidden;
+      transition: opacity .3s var(--ease), visibility .3s; }
+    .nav-scrim.open { opacity: 1; visibility: visible; }
+    .nav-menu.open { transform: none; }
+    @media (max-width: 860px) {
+      .nav-toggle { display: inline-grid; }
+      .nav-menu { position: fixed; top: 0; right: 0; height: 100dvh; width: min(82vw, 320px);
+        flex-direction: column; align-items: stretch; gap: 6px; padding: 80px 16px 28px;
+        background: var(--glass-bg-fallback); border-left: 1px solid var(--line);
+        box-shadow: -24px 0 64px -28px rgba(0,0,0,0.6); transform: translateX(106%);
+        transition: transform .34s var(--ease); overflow-y: auto; z-index: 60; }
+      .nav-menu .nav-link { padding: 12px 14px; font-size: 0.98rem; border-radius: 11px; color: var(--ink-2); }
+      .nav-menu .nav-link.active { color: var(--ink); background: var(--chip-bg); }
+      .nav-menu .nav-link svg { width: 19px; height: 19px; }
+      .nav-menu .nav-link-stars { margin-left: auto; }
+    }
+    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      @media (max-width: 860px) {
+        .nav-menu { background: var(--glass-bg); -webkit-backdrop-filter: blur(22px) saturate(1.4); backdrop-filter: blur(22px) saturate(1.4); }
+      }
+    }
 
     /* ===================== Palette switcher ===================== */
     /* Palette switcher hidden from the header (default palette = Steel still applies). */
@@ -319,7 +351,7 @@
     .hero-hint { margin-top: 18px; font-size: 0.86rem; color: var(--ink-3); }
     .hero-hint a { color: var(--accent-ink); font-weight: 600; text-decoration: none; }
     .hero-hint a:hover { text-decoration: underline; }
-    .hero-cta { max-width: 60ch; margin: 26px auto 0; font-size: 0.9rem; color: var(--ink-2); text-align: center; text-wrap: pretty; }
+    .hero-cta { max-width: 760px; margin: 26px auto 0; font-size: 0.9rem; color: var(--ink-2); text-align: center; }
     .hero-cta .nowrap { white-space: nowrap; }
     .hero-cta em { color: var(--accent-ink); font-style: normal; font-weight: 700; }
     .hero-cta a { color: var(--accent-ink); font-weight: 600; text-decoration: none; }
@@ -371,20 +403,38 @@
     @media (max-width: 560px) { .deck-arrow-btn { display: none; } .deck-separator { display: none; } }
 
     /* ===================== Deck stage ===================== */
-    .deck-stage { --deck-peek: 64px; max-width: 1180px; margin: 0 auto; padding: 0 22px; }
-    @media (max-width: 720px) { .deck-stage { --deck-peek: 30px; } }
+    .deck-stage { max-width: 1180px; margin: 0 auto; padding: 0 22px; }
     .deck-viewport { overflow: hidden; touch-action: pan-y; cursor: grab; }
     .deck-viewport.dragging { cursor: grabbing; }
     .deck-track { display: flex; transition: transform .5s var(--spring); will-change: transform; }
     .deck-track.is-dragging { transition: none; }
-    .deck-panel { flex: 0 0 calc(100% - var(--deck-peek)); padding-right: var(--deck-peek); position: relative; }
-    @media (max-width: 720px) { .deck-panel { padding-right: 14px; } }
-    .deck-panel--public { padding-right: 0; padding-left: var(--deck-peek); }
-    .deck-panel::after { content: attr(data-peek-label); position: absolute; top: 0; writing-mode: vertical-rl; text-orientation: mixed;
-      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); opacity: 0.55; pointer-events: none; }
-    .deck-panel--harness::after { right: 16px; }
-    .deck-panel--public::after { left: 16px; transform: rotate(180deg); }
-    @media (max-width: 720px) { .deck-panel::after { display: none; } }
+    /* Each panel is exactly one viewport wide; the track slides by one full panel width
+       between decks. (Replaces the old over-wide "peek" carousel that mis-measured its
+       width and clipped the active panel on the right while bleeding the other on the left.) */
+    .deck-panel { flex: 0 0 100%; min-width: 0; position: relative; }
+    /* Perf — Safari especially. While the deck moves we collapse every effect that forces a
+       per-frame re-rasterization of the large card subtree, so each panel caches as a flat
+       layer the GPU can translate cheaply. All effects return the moment motion stops.
+         • per-card glass backdrop-blur (cheap on Chrome, costly on Safari)
+         • the ~150 3D flip contexts (perspective + preserve-3d + backface-visibility) — the
+           real Safari cliff: Safari cannot flatten them and re-renders each context per frame.
+           Flattening to transform-style:flat keeps the correct face visible via
+           backface-visibility, with no flip glitch on settle.
+         • the sticky-nav backdrop-blur and the blend-mode grain overlay. */
+    html.deck-sliding .card-face,
+    html.deck-sliding .nav.scrolled { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+    html.deck-sliding .card { perspective: none !important; }
+    html.deck-sliding .card-inner { transform-style: flat !important; }
+    html.deck-sliding .grain { visibility: hidden; }
+    /* Pager dots + swipe hint — signal the deck is a swipeable two-panel carousel. */
+    .deck-dots { display: inline-flex; align-items: center; gap: 7px; margin-left: 2px; }
+    .deck-dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 999px; cursor: pointer;
+      background: var(--ink-3); opacity: 0.4; transition: width .25s var(--ease), opacity .2s, background .2s; }
+    .deck-dot:hover { opacity: 0.7; }
+    .deck-dot.active { width: 22px; opacity: 1; background: var(--accent); }
+    .deck-hint { display: inline-flex; align-items: center; gap: 6px; font-size: 0.74rem; color: var(--ink-3); white-space: nowrap; }
+    .deck-hint svg { width: 16px; height: 16px; opacity: 0.8; }
+    @media (max-width: 600px) { .deck-hint span { display: none; } }
 
     /* ===================== Controls (search + sort) ===================== */
     .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
@@ -543,6 +593,9 @@
       /* Simple Icons are single-color SVGs; flatten them to a cohesive monochrome glyph that
          stays legible in both themes (near-white on dark, near-ink on light). */
       filter: var(--icon-tint); }
+    /* Favicon-sourced logos (apps Simple Icons lacks) keep their real colour — no monochrome
+       flatten — and sit a touch larger since they're already a rounded glyph. */
+    .sw-icon img.raw { filter: none; width: 18px; height: 18px; border-radius: 4px; }
     .sw-icon .icon-mono { font-family: 'Hanken Grotesk', sans-serif; font-size: 0.8rem; font-weight: 700; line-height: 1;
       color: hsl(var(--ch, var(--hue-default)) 70% 70%); text-transform: uppercase; }
     [data-theme="light"] .sw-icon .icon-mono { color: hsl(var(--ch, var(--hue-default)) calc(var(--tint-s) + 14%) 40%); }
@@ -642,9 +695,6 @@
       background: hsl(var(--ch, var(--hue-default)) var(--tint-s) var(--tint-l) / 0.18); border: 1px solid hsl(var(--ch, var(--hue-default)) var(--tint-s) 60% / 0.34); color: hsl(var(--ch, var(--hue-default)) var(--tint-s) 74%); }
     [data-theme="light"] .mcard-glyph { color: hsl(var(--ch, var(--hue-default)) calc(var(--tint-s) + 14%) 38%); }
     .mcard-glyph svg { width: 21px; height: 21px; }
-    .id-chip { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 600; padding: 4px 9px;
-      border-radius: 8px; background: hsl(var(--ch, var(--hue-default)) var(--tint-s) var(--tint-l) / 0.16); color: hsl(var(--ch, var(--hue-default)) var(--tint-s) 78%); border: 1px solid hsl(var(--ch, var(--hue-default)) var(--tint-s) 60% / 0.3); }
-    [data-theme="light"] .id-chip { color: hsl(var(--ch, var(--hue-default)) calc(var(--tint-s) + 14%) 38%); }
     .mcard h3 { font-size: 1.2rem; margin-top: 16px; }
     .mcard .mdesc { color: var(--ink-2); font-size: 0.88rem; margin-top: 8px;
       display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -784,6 +834,61 @@
       .mcard.flipped .card-back { opacity: 1; }
       .mcard:hover .card-inner { transform: none !important; }
     }
+
+    /* ===================== Real-World Demos — homepage teaser (full gallery on demos.html) ===================== */
+    .demos-teaser { max-width: 1180px; margin: 56px auto 0; padding: 0 22px; }
+    .dt-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+    .dt-head .kl { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-ink); }
+    .dt-head h2 { font-size: clamp(1.6rem, 4vw, 2.2rem); margin-top: 8px; }
+    .dt-head p { color: var(--ink-2); max-width: 56ch; margin-top: 8px; font-size: 0.96rem; }
+    .dt-seeall { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; font-size: 0.88rem; color: var(--accent-ink); text-decoration: none;
+      white-space: nowrap; padding: 9px 14px; border-radius: 11px; border: 1px solid var(--glass-border); background: var(--chip-bg); transition: border-color .18s, transform .18s; }
+    .dt-seeall:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .dt-seeall svg { width: 16px; height: 16px; }
+    .demos-strip { display: grid; grid-template-columns: repeat(3, 1fr) auto; gap: 18px; align-items: stretch; }
+    @media (max-width: 900px) {
+      .demos-strip { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: 80%; overflow-x: auto;
+        scroll-snap-type: x mandatory; margin: 0 -22px; padding: 0 22px 12px; }
+      .demos-strip > * { scroll-snap-align: start; }
+    }
+    .dposter { display: flex; flex-direction: column; padding: 14px; border-radius: var(--radius); text-decoration: none; color: inherit;
+      background: var(--glass-bg-fallback); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); position: relative; transition: transform .3s var(--ease), box-shadow .3s var(--ease); }
+    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      .dposter { background: var(--glass-bg); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5); } }
+    .dposter:hover { transform: translateY(-4px); box-shadow: var(--glass-shadow-hi); }
+    .dt-media { position: relative; border-radius: 13px; overflow: hidden; border: 1px solid var(--line); background: #05070b; }
+    [data-theme="light"] .dt-media { background: #e9edf3; }
+    .dt-chrome { display: flex; align-items: center; gap: 6px; padding: 7px 11px; background: var(--cmd-bg); border-bottom: 1px solid var(--cmd-line); }
+    .dt-chrome .dts { display: inline-flex; gap: 4px; }
+    .dt-chrome .dts i { width: 8px; height: 8px; border-radius: 50%; }
+    .dt-chrome .dts i:nth-child(1){ background: hsl(8 60% 60%); } .dt-chrome .dts i:nth-child(2){ background: hsl(45 70% 58%); } .dt-chrome .dts i:nth-child(3){ background: hsl(140 45% 55%); }
+    .dt-chrome .u { font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; color: var(--ink-3); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dt-chrome .lv { display: inline-flex; align-items: center; gap: 4px; font-size: 0.56rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); }
+    .dt-chrome .lv i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 7px var(--accent); animation: dtpulse 1.6s infinite; }
+    @keyframes dtpulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+    .dt-media img { display: block; width: 100%; height: 170px; object-fit: cover; }
+    .dposter .dt-cat { display: inline-flex; align-items: center; gap: 6px; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 13px;
+      color: hsl(var(--ch) var(--tint-s) 74%); }
+    [data-theme="light"] .dposter .dt-cat { color: hsl(var(--ch) calc(var(--tint-s) + 12%) 36%); }
+    .dposter .dt-cat svg { width: 12px; height: 12px; }
+    .dposter h3 { font-family: 'Newsreader', serif; font-weight: 400; font-size: 1.3rem; margin-top: 6px; letter-spacing: -0.01em; }
+    .dposter h3 .ap { font-style: italic; color: var(--accent-ink); }
+    .dposter .dt-blurb { color: var(--ink-2); font-size: 0.83rem; margin-top: 7px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .dposter .dt-by { margin-top: auto; padding-top: 12px; font-size: 0.74rem; color: var(--ink-3); display: flex; align-items: center; gap: 7px; }
+    .dposter .dt-by b { color: var(--ink-2); font-weight: 600; }
+    .dt-av { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; font-size: 0.55rem; font-weight: 700; text-transform: uppercase;
+      background: hsl(var(--ch) var(--tint-s) 52% / 0.2); color: hsl(var(--ch) var(--tint-s) 74%); border: 1px solid hsl(var(--ch) var(--tint-s) 55% / 0.35); }
+    [data-theme="light"] .dt-av { color: hsl(var(--ch) calc(var(--tint-s) + 12%) 36%); }
+    .dposter-end { display: grid; place-content: center; gap: 8px; text-align: center; min-width: 184px; padding: 22px; text-decoration: none; color: inherit;
+      border-radius: var(--radius); border: 1px dashed hsl(var(--accent-band) var(--tint-s) 55% / 0.5); background: hsl(var(--accent-band) var(--tint-s) 52% / 0.07); transition: background .25s, transform .25s; }
+    .dposter-end:hover { background: hsl(var(--accent-band) var(--tint-s) 52% / 0.13); transform: translateY(-2px); }
+    .dposter-end .ico { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto; color: var(--accent-ink);
+      border: 1px solid hsl(var(--accent-band) var(--tint-s) 55% / 0.5); background: hsl(var(--accent-band) var(--tint-s) 52% / 0.14); }
+    .dposter-end .ico svg { width: 22px; height: 22px; }
+    .dposter-end .go { font-weight: 700; color: var(--ink); font-size: 0.95rem; }
+    .dposter-end .tx { color: var(--ink-2); font-size: 0.82rem; max-width: 16ch; margin: 0 auto; }
+    @media (max-width: 900px) { .dposter-end { min-width: 70%; } }
+    @media (prefers-reduced-motion: reduce) { .dt-chrome .lv i { animation: none; } }
   </style>
   <script>document.documentElement.classList.add('js');</script>
 </head>
@@ -794,11 +899,20 @@
   <!-- Nav -->
   <nav class="nav" id="nav">
     <div class="nav-in">
-      <a class="nav-brand" href="#">CLI-Hub</a>
+      <a class="nav-brand" href="#"><span class="nav-brand-badge" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="M8 16.5 18.5 24 8 31.5" stroke="currentColor" stroke-width="3.9" stroke-linecap="square" stroke-linejoin="miter" style="color: var(--accent);"/><path d="M24 29.2h16" stroke="currentColor" stroke-width="3.9" stroke-linecap="square" style="color: var(--ink);"/></svg></span>CLI-Hub</a>
       <div class="nav-links">
+        <div class="nav-menu" id="navMenu">
+        <a class="nav-link" href="#demos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="m10 9 4 2.5L10 14z" fill="currentColor" stroke="none"/></svg>
+          Demos
+        </a>
         <a class="nav-link" href="#matrices">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/></svg>
           Matrices
+        </a>
+        <a class="nav-link" href="docs.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4.8A1.8 1.8 0 0 1 5.8 3H12v17H5.8A1.8 1.8 0 0 0 4 21.8z"/><path d="M20 4.8A1.8 1.8 0 0 0 18.2 3H12v17h6.2A1.8 1.8 0 0 1 20 21.8z"/></svg>
+          Docs
         </a>
         <a class="nav-link" href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5.5 18.5 9.8-9.8"/><path d="m13.7 6.9 3.4 3.4"/><path d="M18 4v2.4"/><path d="M16.8 5.2h2.4"/><path d="M7.5 4.8v2"/><path d="M6.5 5.8h2"/><path d="M18.2 15.8v2"/><path d="M17.2 16.8h2"/></svg>
@@ -816,6 +930,7 @@
         <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">
           Contribute
         </a>
+        </div>
         <div class="palette-switch" id="palette-switch" role="group" aria-label="Color palette">
           <span class="palette-switch-label">Palette</span>
         </div>
@@ -829,8 +944,13 @@
           <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
           <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
+        <button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false" aria-controls="navMenu">
+          <svg class="icon-bars" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <svg class="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
       </div>
     </div>
+    <div class="nav-scrim" id="navScrim"></div>
   </nav>
 
   <!-- Hero -->
@@ -903,6 +1023,10 @@
 
     <div class="hero-actions">
       <a class="btn-primary" href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank">Agent SKILL (SKILL.md)</a>
+      <a class="btn-secondary" href="docs.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4.8A1.8 1.8 0 0 1 5.8 3H12v17H5.8A1.8 1.8 0 0 0 4 21.8z"/><path d="M20 4.8A1.8 1.8 0 0 0 18.2 3H12v17h6.2A1.8 1.8 0 0 1 20 21.8z"/></svg>
+        Documentation
+      </a>
       <a class="btn-secondary" href="https://github.com/HKUDS/CLI-Anything" target="_blank">
         <svg viewBox="0 0 98 96" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6C29.304 70.25 17.9 66.013 17.9 47.02c0-5.52 1.94-10.046 5.127-13.58-.486-1.302-2.264-6.437.486-13.34 0 0 4.206-1.302 13.59 5.216 3.963-1.14 8.17-1.628 12.34-1.628 4.17 0 8.376.568 12.34 1.628 9.384-6.518 13.59-5.216 13.59-5.216 2.75 6.903.972 12.038.486 13.34 3.268 3.534 5.127 8.06 5.127 13.58 0 19.074-11.485 23.15-22.328 24.29 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
         Star on GitHub
@@ -920,6 +1044,62 @@
     <p class="hero-cta">We welcome contributions for <em>any</em> application &mdash; desktop apps, dev tools, cloud services, SaaS APIs, creative suites, and beyond. If it has a GUI or an API, it deserves an agent-native CLI. Read the <a href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">Contributing Guide</a>, use the <a href="https://github.com/HKUDS/CLI-Anything/blob/main/.github/PULL_REQUEST_TEMPLATE.md" target="_blank">PR Template</a>, and bring it <span class="nowrap">to the hub!</span></p>
 
   </div>
+
+  <!-- Real-World Demos — homepage teaser (full Editorial gallery lives on demos.html) -->
+  <section class="demos-teaser" id="demos">
+    <div class="dt-head">
+      <div>
+        <div class="kl">See it work</div>
+        <h2>Real-world demos</h2>
+        <p>Agents driving generated CLIs to finished artifacts &mdash; CAD models, 3D scenes, diagrams, gameplay, captioned video, and live GIS. No GUI needed.</p>
+      </div>
+      <a class="dt-seeall" href="demos.html">See all demos
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
+    </div>
+    <div class="demos-strip">
+
+      <a class="dposter" href="demos.html#freecad" style="--ch:210">
+        <div class="dt-media">
+          <div class="dt-chrome"><span class="dts"><i></i><i></i><i></i></span><span class="u">cli-anything-freecad · preview live</span><span class="lv"><i></i>live</span></div>
+          <img loading="lazy" src="assets/demos/freecad-curiosity-preview-trajectory.gif" alt="FreeCAD Curiosity rover demo">
+        </div>
+        <span class="dt-cat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/></svg>3D / CAD</span>
+        <h3><span class="ap">FreeCAD</span> — Curiosity Rover</h3>
+        <p class="dt-blurb">An agent assembles a Curiosity-inspired rover while publishing real preview bundles and recording a replayable trajectory.</p>
+        <div class="dt-by"><span class="dt-av">CA</span><span><b>Core team</b> · CLI-Anything</span></div>
+      </a>
+
+      <a class="dposter" href="demos.html#blender" style="--ch:28">
+        <div class="dt-media">
+          <div class="dt-chrome"><span class="dts"><i></i><i></i><i></i></span><span class="u">cli-anything-blender · preview live</span><span class="lv"><i></i>live</span></div>
+          <img loading="lazy" src="assets/demos/blender-orbital-relay-drone-preview-trajectory.gif" alt="Blender orbital relay drone demo">
+        </div>
+        <span class="dt-cat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/></svg>3D · Hard-surface</span>
+        <h3><span class="ap">Blender</span> — Orbital Relay Drone</h3>
+        <p class="dt-blurb">A hard-surface drone grows under a real preview loop, each stage pushing render-backed bundles tied to the trajectory.</p>
+        <div class="dt-by"><span class="dt-av">CA</span><span><b>Core team</b> · CLI-Anything</span></div>
+      </a>
+
+      <a class="dposter" href="demos.html#drawio" style="--ch:250">
+        <div class="dt-media">
+          <div class="dt-chrome"><span class="dts"><i></i><i></i><i></i></span><span class="u">cli-anything-drawio · build</span><span class="lv"><i></i>live</span></div>
+          <img loading="lazy" src="assets/demos/drawio-demo.gif" alt="Draw.io HTTPS handshake diagram demo">
+        </div>
+        <span class="dt-cat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v4a2 2 0 0 0 2 2h9"/></svg>Diagramming</span>
+        <h3><span class="ap">Draw.io</span> — HTTPS Handshake</h3>
+        <p class="dt-blurb">A full HTTPS lifecycle diagram built from scratch — TCP handshake, TLS negotiation, and termination — entirely via CLI.</p>
+        <div class="dt-by"><span class="dt-av">ZH</span><span>Contributed by <b>@zhangxilong-43</b></span></div>
+      </a>
+
+      <a class="dposter-end" href="demos.html">
+        <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+        <span class="go">See all demos</span>
+        <span class="tx">Explore the full gallery</span>
+      </a>
+
+    </div>
+  </section>
 
   <div class="marketplace-prelude">
     <div class="typing-shell" data-typing-text="pip install cli-anything-hub">
@@ -968,7 +1148,15 @@
       Public CLIs
       <span class="deck-count" id="deck-count-public">&mdash;</span>
     </button>
+    <div class="deck-dots" role="tablist" aria-label="Switch deck">
+      <button class="deck-dot active" data-deck="harness" onclick="switchDeck('harness')" aria-label="Show CLI-Anything CLIs" title="CLI-Anything CLIs"></button>
+      <button class="deck-dot" data-deck="public" onclick="switchDeck('public')" aria-label="Show Public CLIs" title="Public CLIs"></button>
+    </div>
     <span class="deck-separator"></span>
+    <span class="deck-hint" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9 4 12l4 3"/><path d="M16 9l4 3-4 3"/><path d="M4 12h16"/></svg>
+      <span>drag, scroll, or tap to switch</span>
+    </span>
     <button class="deck-arrow-btn" id="deck-toggle" onclick="toggleDeck()">
       <span>Public CLIs</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -1222,6 +1410,26 @@
       window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
     })();
 
+    // ── Mobile nav drawer ──
+    (function () {
+      const toggle = document.getElementById('navToggle');
+      const menu = document.getElementById('navMenu');
+      const scrim = document.getElementById('navScrim');
+      if (!toggle || !menu) return;
+      function setOpen(open) {
+        menu.classList.toggle('open', open);
+        toggle.classList.toggle('open', open);
+        if (scrim) scrim.classList.toggle('open', open);
+        toggle.setAttribute('aria-expanded', String(open));
+        document.body.style.overflow = open ? 'hidden' : '';
+      }
+      toggle.addEventListener('click', () => setOpen(!menu.classList.contains('open')));
+      if (scrim) scrim.addEventListener('click', () => setOpen(false));
+      menu.addEventListener('click', (e) => { if (e.target.closest('a')) setOpen(false); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+      window.addEventListener('resize', () => { if (window.innerWidth > 860) setOpen(false); });
+    })();
+
     const REPO = 'https://github.com/HKUDS/CLI-Anything';
     const GITHUB_REPO_API = 'https://api.github.com/repos/HKUDS/CLI-Anything';
     const GITHUB_STARS_BADGE_API = 'https://img.shields.io/github/stars/HKUDS/CLI-Anything.json';
@@ -1280,7 +1488,74 @@
       gmail: 'gmail', googlecalendar: 'googlecalendar', googlesheets: 'googlesheets', googledocs: 'googledocs',
       excalidraw: 'excalidraw', drawio: 'diagramsdotnet', openai: 'openai', anthropic: 'anthropic',
       huggingface: 'huggingface', replicate: 'replicate', elevenlabs: 'elevenlabs',
+      // Chinese / APAC brands Simple Icons carries (others resolve via the favicon chain below)
+      wechat: 'wechat', weixin: 'wechat', qq: 'tencentqq', tencentqq: 'tencentqq',
+      bilibili: 'bilibili', weibo: 'sinaweibo', sinaweibo: 'sinaweibo', zhihu: 'zhihu',
+      baidu: 'baidu', alipay: 'alipay', dingtalk: 'dingtalk', tiktok: 'tiktok', douyin: 'tiktok',
+      xiaohongshu: 'xiaohongshu', taobao: 'taobao', tmall: 'tmall', gitee: 'gitee',
+      alibabacloud: 'alibabacloud', huawei: 'huawei', xiaomi: 'xiaomi',
     };
+
+    // Synonyms & non-English names → a canonical key (used for BOTH the Simple Icons slug and
+    // the favicon-domain lookup). Powers 近义查询 (synonyms); paired with the containment scan
+    // in resolveIconKey() for 模糊查询 (fuzzy). Add an alias to widen what a CLI name can match.
+    const ICON_ALIASES = {
+      feishu: 'lark', lark: 'lark', larksuite: 'lark', '飞书': 'lark',
+      wecom: 'wecom', wework: 'wecom', wechatwork: 'wecom', weixinwork: 'wecom', '企业微信': 'wecom',
+      minimax: 'minimax', minimaxi: 'minimax',
+      wechat: 'wechat', weixin: 'wechat', '微信': 'wechat',
+      dingtalk: 'dingtalk', dingding: 'dingtalk', '钉钉': 'dingtalk',
+      alipay: 'alipay', '支付宝': 'alipay',
+      bilibili: 'bilibili', bili: 'bilibili', '哔哩哔哩': 'bilibili',
+      weibo: 'weibo', '微博': 'weibo', sinaweibo: 'weibo',
+      zhihu: 'zhihu', '知乎': 'zhihu', baidu: 'baidu', '百度': 'baidu',
+      taobao: 'taobao', '淘宝': 'taobao', tmall: 'tmall', '天猫': 'tmall',
+      douyin: 'douyin', '抖音': 'douyin', tiktok: 'tiktok',
+      kuaishou: 'kuaishou', '快手': 'kuaishou', meituan: 'meituan', '美团': 'meituan',
+      amap: 'amap', gaode: 'amap', '高德': 'amap', netease: 'netease', '网易': 'netease',
+      neteasemusic: 'neteasemusic', qqmusic: 'qqmusic', yuque: 'yuque', '语雀': 'yuque',
+      xiaohongshu: 'xiaohongshu', rednote: 'xiaohongshu', '小红书': 'xiaohongshu',
+      qq: 'qq', tencent: 'tencent',
+    };
+
+    // Curated real-logo favicon domains (authoritative — beats a generic homepage such as a
+    // github.com repo URL). Apps Simple Icons lacks still get a real colour logo from here.
+    const ICON_DOMAINS = {
+      lark: 'larksuite.com', wecom: 'work.weixin.qq.com', minimax: 'minimaxi.com',
+      wechat: 'weixin.qq.com', dingtalk: 'dingtalk.com', alipay: 'alipay.com',
+      bilibili: 'bilibili.com', weibo: 'weibo.com', zhihu: 'zhihu.com', baidu: 'baidu.com',
+      taobao: 'taobao.com', tmall: 'tmall.com', douyin: 'douyin.com', tiktok: 'tiktok.com',
+      kuaishou: 'kuaishou.com', meituan: 'meituan.com', amap: 'amap.com', netease: '163.com',
+      neteasemusic: 'music.163.com', qqmusic: 'y.qq.com', yuque: 'yuque.com',
+      xiaohongshu: 'xiaohongshu.com', qq: 'qq.com', tencent: 'tencent.com',
+    };
+    // Generic code/registry hosts we never use as a favicon source (they'd brand every app the
+    // same). When an entry's homepage is one of these, we skip straight to the monogram.
+    const ICON_GENERIC_HOSTS = new Set(['github.com', 'gitlab.com', 'bitbucket.org', 'npmjs.com', 'pypi.org', 'gitee.com', 'sourceforge.net', 'readthedocs.io', 'readthedocs.org', 'codeberg.org']);
+
+    function iconNormName(s) {
+      return String(s || '').toLowerCase().trim()
+        .replace(/[\s_]*cli$/, '').replace(/^cli[\s_-]*/, '').replace(/[\s_\-./]+/g, '');
+    }
+    function iconDomainFromUrl(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (_) { return ''; } }
+    // Multi-source <img> fallback: walk data-fb (pipe-separated URLs) before degrading to a monogram.
+    window.iconFallback = function (img) {
+      const fbs = (img.getAttribute('data-fb') || '').split('|').filter(Boolean);
+      if (fbs.length) { const next = fbs.shift(); img.setAttribute('data-fb', fbs.join('|')); if (next.indexOf('simpleicons') === -1) img.classList.add('raw'); img.src = next; return; }
+      const span = document.createElement('span'); span.className = 'icon-mono';
+      span.textContent = img.getAttribute('data-letter') || '?';
+      img.replaceWith(span);
+    };
+    // Cross-reference resolver: alias (synonym) → exact key → containment (fuzzy) scan.
+    function resolveIconKey(name) {
+      const n = iconNormName(name);
+      if (!n) return '';
+      if (ICON_ALIASES[n]) return ICON_ALIASES[n];
+      if (ICON_REGISTRY[n] || ICON_DOMAINS[n]) return n;
+      const keys = Object.keys(ICON_ALIASES).concat(Object.keys(ICON_REGISTRY), Object.keys(ICON_DOMAINS));
+      for (const k of keys) { if (k.length >= 3 && (n.includes(k) || k.includes(n))) return ICON_ALIASES[k] || k; }
+      return n;
+    }
 
     // Tasteful single-letter monogram fallback (one clean letter, palette-tinted tile).
     function iconMono(label) {
@@ -1292,22 +1567,32 @@
     function iconFor(cli, extraClass) {
       const obj = (cli && typeof cli === 'object') ? cli : null;
       const label = obj ? (obj.display_name || obj.name) : String(cli || '');
-      const name = String(obj ? obj.name : cli || '').toLowerCase().trim();
+      const rawName = String(obj ? obj.name : cli || '');
       const cls = 'sw-icon' + (extraClass ? ' ' + extraClass : '');
-      // (1) explicit icon field on the registry entry (future-proofing — read it first)
+      const letter = (String(label || '?').trim()[0] || '?').toUpperCase();
+      const key = resolveIconKey(rawName);
+
+      // (1) explicit slug on the entry, then (2) Simple Icons by resolved key or raw name.
       let slug = obj && typeof obj.icon === 'string' && obj.icon.trim() ? obj.icon.trim().toLowerCase() : '';
-      // (2) name → slug from the registry
-      if (!slug && ICON_REGISTRY[name]) slug = ICON_REGISTRY[name];
-      if (slug) {
-        // (3) graceful fallback: if the slug 404s, swap the <img> for the monogram.
-        // The monogram HTML sits inside a single-quoted JS string inside a double-quoted
-        // attribute, so escape both quote kinds for the onerror handler.
-        const mono = iconMono(label).replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        return `<span class="${cls}" title="${escAttr(label)}"><img loading="lazy" decoding="async" ` +
-          `src="https://cdn.simpleicons.org/${esc(slug)}" alt="${escAttr(label)} icon" ` +
-          `onerror="this.outerHTML='${mono}'"></span>`;
+      if (!slug) slug = ICON_REGISTRY[key] || ICON_REGISTRY[iconNormName(rawName)] || '';
+      // (3) real-logo favicon domain: curated first, else the entry's own homepage (skip code hosts).
+      let domain = ICON_DOMAINS[key] || '';
+      if (!domain && obj) { const hp = iconDomainFromUrl(obj.homepage || obj.source_url || ''); if (hp && !ICON_GENERIC_HOSTS.has(hp)) domain = hp; }
+
+      // Ordered source chain → monogram. Simple Icons (clean monochrome) first; then live
+      // favicons widen coverage to apps it lacks (esp. Chinese: Lark, WeCom, MiniMax, DingTalk…).
+      const srcs = [];
+      if (slug) srcs.push(`https://cdn.simpleicons.org/${esc(slug)}`);
+      if (domain) {
+        srcs.push(`https://icons.duckduckgo.com/ip3/${esc(domain)}.ico`);
+        srcs.push(`https://www.google.com/s2/favicons?domain=${esc(domain)}&sz=64`);
       }
-      return `<span class="${cls}" title="${escAttr(label)}">${iconMono(label)}</span>`;
+      if (!srcs.length) return `<span class="${cls}" title="${escAttr(label)}">${iconMono(label)}</span>`;
+      const first = srcs.shift();
+      const rawCls = first.indexOf('simpleicons') === -1 ? ' class="raw"' : '';
+      return `<span class="${cls}" title="${escAttr(label)}"><img${rawCls} loading="lazy" decoding="async" ` +
+        `src="${first}" data-fb="${escAttr(srcs.join('|'))}" data-letter="${escAttr(letter)}" ` +
+        `alt="${escAttr(label)} icon" onerror="iconFallback(this)"></span>`;
     }
 
     // Per-category tints follow the ACTIVE palette's accent hue (catHue centres on the
@@ -1355,6 +1640,16 @@
     let harnessClis = [];
     let publicClis = [];
     let activeDeck = 'harness';
+    let deckSuspendTimer = null;
+    // Collapse heavy effects (glass blur, the 3D flip contexts, sticky-nav blur, grain) for the
+    // duration of ANY deck movement — drag or animated switch — so panels translate as flat,
+    // GPU-cached layers. This is what makes the slide smooth on Safari. Auto-clears 560ms after
+    // the last movement (covers the .5s settle transition); each move resets the timer.
+    function armDeckSuspend() {
+      document.documentElement.classList.add('deck-sliding');
+      clearTimeout(deckSuspendTimer);
+      deckSuspendTimer = setTimeout(() => document.documentElement.classList.remove('deck-sliding'), 560);
+    }
     let wheelSwitchLockUntil = 0;
 
     const deckGesture = { pointerId: null, startX: 0, deltaX: 0, dragging: false };
@@ -1512,9 +1807,13 @@
       activeDeck = deck;
       const track = document.getElementById('deck-track');
       track.dataset.active = deck;
+      armDeckSuspend();
       updateDeckPosition();
       document.querySelectorAll('.deck-tab').forEach(t => {
         t.classList.toggle('active', t.dataset.deck === deck);
+      });
+      document.querySelectorAll('.deck-dot').forEach(d => {
+        d.classList.toggle('active', d.dataset.deck === deck);
       });
       const toggle = document.getElementById('deck-toggle');
       if (deck === 'harness') {
@@ -1530,19 +1829,17 @@
     function toggleDeck() { switchDeck(activeDeck === 'harness' ? 'public' : 'harness'); }
 
     function getDeckMetrics() {
-      const stage = document.querySelector('.deck-stage');
       const viewport = document.querySelector('.deck-viewport');
       const track = document.getElementById('deck-track');
-      if (!stage || !viewport || !track) return null;
-      const peek = parseFloat(getComputedStyle(stage).getPropertyValue('--deck-peek')) || 0;
-      const panelWidth = Math.max(viewport.clientWidth - peek, 0);
-      return { viewport, track, panelWidth, maxShift: Math.max(panelWidth - peek, 0) };
+      if (!viewport || !track) return null;
+      // Each panel is exactly one viewport wide, so the slide distance is the viewport width.
+      const panelWidth = viewport.clientWidth;
+      return { viewport, track, panelWidth, maxShift: panelWidth };
     }
     function setDeckTransform(offset = 0) {
       const metrics = getDeckMetrics();
       if (!metrics) return;
-      const { viewport, track, panelWidth, maxShift } = metrics;
-      viewport.style.setProperty('--deck-panel-width', `${panelWidth}px`);
+      const { track, maxShift } = metrics;
       const baseShift = activeDeck === 'public' ? -maxShift : 0;
       const clampedShift = Math.min(0, Math.max(-maxShift, baseShift + offset));
       track.style.transform = `translateX(${clampedShift}px)`;
@@ -1572,6 +1869,7 @@
       viewport.addEventListener('pointermove', (e) => {
         if (!deckGesture.dragging || e.pointerId !== deckGesture.pointerId) return;
         deckGesture.deltaX = e.clientX - deckGesture.startX;
+        armDeckSuspend();
         setDeckTransform(deckGesture.deltaX);
       });
       const endDrag = (e) => {
@@ -1837,7 +2135,6 @@
       const front = `
         <div class="mcard-top">
           <span class="mcard-glyph">${glyph}</span>
-          <span class="id-chip">${esc(m.matrix_id || '')}</span>
         </div>
         <h3>${esc(m.display_name || m.name)}</h3>
         <p class="mdesc">${esc(m.description || '')}</p>

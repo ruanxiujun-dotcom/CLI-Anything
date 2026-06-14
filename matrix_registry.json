@@ -63,10 +63,10 @@
           "outputs": ["video_clips:path[]", "sources_manifest:path"],
           "skill_search_hints": ["video downloader", "yt-dlp", "bilibili downloader", "youtube downloader", "download video skill"],
           "providers": [
-            {"kind": "public-cli", "name": "yt-dlp", "requires": {"binary": ["yt-dlp", "ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "General downloader for YouTube, Bilibili, and many sites; supports search, playlists, cookies, and quality filters."},
-            {"kind": "public-cli", "name": "you-get", "requires": {"binary": ["you-get"]}, "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Multi-site media downloader with Bilibili support."},
-            {"kind": "public-cli", "name": "lux", "requires": {"binary": ["lux", "ffmpeg"]}, "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Go CLI downloader with Bilibili, YouTube, Douyin, Youku, and other site support."},
-            {"kind": "public-cli", "name": "BBDown", "requires": {"binary": ["BBDown", "ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "Bilibili-focused CLI; useful for subtitles, danmaku, playlists, favorites, and high-quality streams."}
+            {"kind": "public-cli", "name": "yt-dlp", "requires": {"binary": ["yt-dlp", "ffmpeg"]}, "install_hint": "pipx install yt-dlp  # or brew install yt-dlp", "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "General downloader for YouTube, Bilibili, and many sites; supports search, playlists, cookies, and quality filters."},
+            {"kind": "public-cli", "name": "you-get", "requires": {"binary": ["you-get"]}, "install_hint": "pipx install you-get  # or brew install you-get", "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Multi-site media downloader with Bilibili support."},
+            {"kind": "public-cli", "name": "lux", "requires": {"binary": ["lux", "ffmpeg"]}, "install_hint": "brew install lux  # or go install github.com/iawia002/lux@latest", "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Go CLI downloader with Bilibili, YouTube, Douyin, Youku, and other site support."},
+            {"kind": "public-cli", "name": "BBDown", "requires": {"binary": ["BBDown", "ffmpeg"]}, "install_hint": "dotnet tool install --global BBDown  # or brew install bbdown", "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "Bilibili-focused CLI; useful for subtitles, danmaku, playlists, favorites, and high-quality streams."}
           ]
         },
         {

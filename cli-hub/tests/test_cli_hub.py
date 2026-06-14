@@ -14,12 +14,19 @@ from cli_hub import __version__
 from cli_hub.registry import fetch_registry, fetch_all_clis, get_cli, search_clis, list_categories
 from cli_hub.matrix import (
     _package_available,
+    all_recipes,
+    capability_matches,
     check_provider_requirements,
     fetch_matrix_registry,
     fetch_all_matrices,
     get_matrix,
     preflight_matrix,
+    provider_cli_name,
+    provider_install_hint,
+    resolve_install_scope,
+    search_capabilities,
     search_matrices,
+    unmanaged_providers,
 )
 from cli_hub.matrix_skill import (
     resolve_local_skill_path,
@@ -1579,6 +1586,8 @@ class TestCLI:
                 "with_available_provider": 1,
                 "providers": 2,
                 "available_providers": 1,
+                "covered": 1,
+                "gaps": 0,
             },
             "capabilities": [
                 {
@@ -1606,6 +1615,7 @@ class TestCLI:
             SAMPLE_MATRIX_REGISTRY["matrices"][0],
             capability_id=None,
             offline=False,
+            capability_ids=None,
         )
 
     @patch("cli_hub.cli.track_first_run")
@@ -1632,6 +1642,8 @@ class TestCLI:
                 "providers": 1,
                 "available_providers": 0,
                 "agent_installable_providers": 1,
+                "covered": 1,
+                "gaps": 0,
             },
             "capabilities": [
                 {
@@ -1676,7 +1688,8 @@ class TestCLI:
     def test_matrix_install_command_partial_failure(self, mock_install_matrix, mock_detect, mock_visit, mock_first_run):
         mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["matrix", "install", "video-creation"])
-        assert result.exit_code == 1
+        # Partial failure (some installed, some failed) → exit code 3 per the contract.
+        assert result.exit_code == 3
         assert "Summary: 1 installed, 1 skipped, 1 failed" in result.output
         assert "Matrix skill: cli-hub-matrix/video-creation/SKILL.md" in result.output
         assert "Local matrix skill: /tmp/video-creation.SKILL.md" in result.output
@@ -1830,3 +1843,179 @@ class TestCLI:
         result = self.runner.invoke(main, ["launch", "nonexistent"])
         assert result.exit_code == 1
         assert "not found" in result.output
+
+
+SAMPLE_MATRIX = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+
+
+class TestMatrixScopeHelpers:
+    """Pure-function tests for provider↔CLI resolution and install scoping (F2.2)."""
+
+    def test_provider_cli_name_strips_harness_prefix(self):
+        gimp = SAMPLE_MATRIX["capabilities"][0]["providers"][0]
+        assert provider_cli_name(gimp, SAMPLE_MATRIX["clis"]) == "gimp"
+
+    def test_provider_cli_name_none_for_non_installable(self):
+        pillow = SAMPLE_MATRIX["capabilities"][0]["providers"][1]  # python
+        assert provider_cli_name(pillow, SAMPLE_MATRIX["clis"]) is None
+
+    def test_provider_cli_name_explicit_field_wins(self):
+        provider = {"kind": "public-cli", "name": "Whatever", "cli": "blender"}
+        assert provider_cli_name(provider, SAMPLE_MATRIX["clis"]) == "blender"
+
+    def test_scope_all_returns_every_cli(self):
+        scope = resolve_install_scope(SAMPLE_MATRIX)
+        assert scope["error"] is None
+        assert scope["cli_names"] == ["gimp", "blender", "audacity"]
+        assert scope["scope"]["type"] == "all"
+
+    def test_scope_capability_maps_to_clis(self):
+        scope = resolve_install_scope(SAMPLE_MATRIX, capability="package.thumbnail")
+        assert scope["error"] is None
+        assert scope["cli_names"] == ["gimp"]
+
+    def test_scope_recipe_unions_capability_clis(self):
+        scope = resolve_install_scope(SAMPLE_MATRIX, recipe="social-short")
+        assert scope["error"] is None
+        # social-short uses package.thumbnail (gimp) + audio.capture (audacity), in clis[] order
+        assert scope["cli_names"] == ["gimp", "audacity"]
+
+    def test_scope_only_validates_membership(self):
+        ok = resolve_install_scope(SAMPLE_MATRIX, only="gimp,audacity")
+        assert ok["error"] is None
+        assert ok["cli_names"] == ["gimp", "audacity"]
+        bad = resolve_install_scope(SAMPLE_MATRIX, only="gimp,bogus")
+        assert bad["error"] is not None and "bogus" in bad["error"]
+
+    def test_scope_mutually_exclusive(self):
+        scope = resolve_install_scope(SAMPLE_MATRIX, capability="package.thumbnail", only="gimp")
+        assert scope["error"] is not None
+
+    def test_scope_unknown_capability_errors(self):
+        scope = resolve_install_scope(SAMPLE_MATRIX, capability="nope")
+        assert scope["error"] is not None and "nope" in scope["error"]
+
+    def test_unmanaged_providers_groups_by_kind(self):
+        groups = unmanaged_providers(SAMPLE_MATRIX)
+        assert groups.get("python") == ["Pillow"]
+        assert groups.get("native") == ["sox"]
+
+    def test_provider_install_hint_derives_cli_hub_command(self):
+        gimp = SAMPLE_MATRIX["capabilities"][0]["providers"][0]
+        assert provider_install_hint(gimp, SAMPLE_MATRIX["clis"]) == "cli-hub install gimp"
+
+    def test_provider_install_hint_prefers_explicit(self):
+        provider = {"kind": "public-cli", "name": "tool", "install_hint": "brew install tool"}
+        assert provider_install_hint(provider, SAMPLE_MATRIX["clis"]) == "brew install tool"
+
+
+class TestCapabilitySearch:
+    """Capability-level search powering matrix search matched_in and `cli-hub can` (F1.1)."""
+
+    def test_capability_matches_by_intent(self):
+        matches = capability_matches(SAMPLE_MATRIX, "thumbnail")
+        ids = {m["capability_id"] for m in matches}
+        assert "package.thumbnail" in ids
+        hit = next(m for m in matches if m["capability_id"] == "package.thumbnail")
+        assert hit["match_field"] in {"id", "intent", "hint"}
+        assert "cli-anything-gimp" in hit["providers_summary"]
+
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_search_capabilities_includes_availability(self, mock_fetch):
+        with patch("cli_hub.matrix.shutil.which", return_value=None), \
+             patch("cli_hub.matrix._package_available", return_value=False):
+            hits = search_capabilities("audio")
+        assert hits
+        hit = hits[0]
+        assert "providers" in hit and "available" in hit["providers"][0]
+
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_all_recipes_filters_by_query(self, mock_fetch):
+        assert {r["id"] for r in all_recipes()} == {"social-short"}
+        assert all_recipes("nonexistent-recipe-xyz") == []
+
+
+class TestMatrixF1F2Commands:
+    """CLI-level tests for the F1/F2 matrix commands."""
+
+    def setup_method(self):
+        self.runner = click.testing.CliRunner()
+        self.human_detection = {"is_agent": False, "agent": None, "source": "tty"}
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_can_command_finds_capability(self, mock_fetch, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        with patch("cli_hub.matrix.shutil.which", return_value=None), \
+             patch("cli_hub.matrix._package_available", return_value=False):
+            result = self.runner.invoke(main, ["can", "thumbnail"])
+        assert result.exit_code == 0
+        assert "package.thumbnail" in result.output
+        assert "cli-hub matrix preflight video-creation -c package.thumbnail" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_can_command_no_match_exits_1(self, mock_fetch, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["can", "zzz-no-such-capability"])
+        assert result.exit_code == 1
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_recipes_command_lists_recipes(self, mock_fetch, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "recipes"])
+        assert result.exit_code == 0
+        assert "social-short" in result.output
+        assert "preflight video-creation --recipe social-short" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_installed", return_value={})
+    @patch("cli_hub.installer.get_cli")
+    @patch("cli_hub.installer.get_matrix", return_value=SAMPLE_MATRIX)
+    def test_install_dry_run_no_side_effects(self, mock_get_matrix, mock_get_cli,
+                                             mock_installed, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        mock_get_cli.side_effect = lambda n: {"name": n, "display_name": n.title(),
+                                              "_source": "harness", "entry_point": n}
+        with patch("cli_hub.installer.install_cli") as mock_install:
+            result = self.runner.invoke(
+                main, ["matrix", "install", "video-creation", "--capability", "package.thumbnail", "--dry-run"])
+        mock_install.assert_not_called()
+        assert result.exit_code == 0
+        assert "Install plan" in result.output
+        assert "gimp" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.installer.get_matrix", return_value=SAMPLE_MATRIX)
+    def test_install_unknown_capability_exits_2(self, mock_get_matrix, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(
+            main, ["matrix", "install", "video-creation", "--capability", "nope", "--dry-run"])
+        assert result.exit_code == 2
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.doctor_matrix", return_value=(False, {
+        "matrix": SAMPLE_MATRIX,
+        "last_run": "2026-06-14T10:00:00",
+        "checks": [{"name": "gimp", "entry_point": "gimp", "status": "not_installed",
+                    "detail": "Not installed", "fix": "cli-hub install gimp"}],
+        "summary": {"total": 1, "ok": 0, "broken": 0, "not_installed": 1},
+    }))
+    def test_doctor_command_reports_gaps_exit_3(self, mock_doctor, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "doctor", "video-creation"])
+        assert result.exit_code == 3
+        assert "cli-hub install gimp" in result.output
